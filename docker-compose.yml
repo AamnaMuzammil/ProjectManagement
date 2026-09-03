@@ -1,0 +1,77 @@
+services:
+
+  # PostgreSQL Service
+  postgres_db:
+    image: postgres:16-alpine
+    container_name: pm_postgres_container
+
+    environment:
+      POSTGRES_USER: Amna
+      POSTGRES_PASSWORD: "123456"
+      POSTGRES_DB: project_management
+
+    ports:
+      - "5434:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    networks:
+      - pm_network
+
+
+  # NestJS Application Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: pm_nestjs_container
+
+    ports:
+      - "${PORT}:${PORT}"
+
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+
+    environment:
+      DB_HOST: postgres_db
+      DB_PORT: 5432
+      DB_USERNAME: Amna
+      DB_PASSWORD: "123456"
+      DB_NAME: project_management
+
+    depends_on:
+      - postgres_db
+
+    networks:
+      - pm_network
+
+
+  # pgAdmin Service
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pm_pgadmin_container
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: adminpassword
+
+    ports:
+      - "8080:80"
+
+    depends_on:
+      - postgres_db
+
+    networks:
+      - pm_network
+
+
+volumes:
+  pgdata:
+
+
+networks:
+  pm_network:
+    driver: bridge

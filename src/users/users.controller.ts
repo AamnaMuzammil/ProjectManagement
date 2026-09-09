@@ -1,60 +1,162 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   Param,
   ParseIntPipe,
   Patch,
-  Body,
+  Post,
   UseGuards,
   ForbiddenException,
 } from '@nestjs/common';
 
 import { UsersService } from './users.service';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { PermissionsGuard } from '../common/guards/permissions.guard';
+import { Permissions } from '../common/decorators/permissions.decorator';
+
 import { GetUser } from '../common/decorators/get-user.decorator';
 
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { AssignRoleDto } from './dto/assign-role.dto';
+import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
+
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+@UseGuards(
+  JwtAuthGuard,
+  PermissionsGuard,
+)
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+  ) {}
+
+  // =====================================
+  // GET ALL USERS
+  // ADMIN / users with VIEW_USER
+  // =====================================
 
   @Get()
+  @Permissions('VIEW_USER')
   findAll() {
     return this.usersService.findAll();
   }
 
+  // =====================================
+  // GET ONE USER
+  // =====================================
+
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  @Permissions('VIEW_USER')
+  findOne(
+    @Param('id', ParseIntPipe)
+    id: number,
+  ) {
     return this.usersService.findOne(id);
   }
-  @Patch(':id')
+
+  // =====================================
+  // ADMIN CREATE USER
+  // =====================================
+
+  @Post()
+  @Permissions('CREATE_USER')
+  create(
+    @Body() dto: CreateUserDto,
+  ) {
+    return this.usersService.create(dto);
+  }
+
+ // =====================================
+// UPDATE USER
+// =====================================
+
+@Patch(':id')
+@Permissions('UPDATE_USER')
 update(
   @Param('id', ParseIntPipe) id: number,
   @Body() dto: UpdateUserDto,
-  @GetUser('userId') userId: number,
 ) {
-  if (id !== userId) {
-    throw new ForbiddenException(
-      'You can only update your own profile',
-    );
-  }
-
   return this.usersService.update(id, dto);
-}
+}// =====================================
+  // ADMIN DELETE USER
+  // =====================================
 
-@Delete(':id')
-remove(
-  @Param('id', ParseIntPipe) id: number,
-  @GetUser('userId') userId: number,
-) {
-  if (id !== userId) {
-    throw new ForbiddenException(
-      'You can only delete your own account',
+  @Delete(':id')
+  @Permissions('DELETE_USER')
+  remove(
+    @Param('id', ParseIntPipe)
+    id: number,
+
+    @GetUser('userId')
+    userId: number,
+  ) {
+    if (id === userId) {
+      throw new ForbiddenException(
+        'You cannot delete your own account from this endpoint',
+      );
+    }
+
+    return this.usersService.remove(id);
+  }
+
+  // =====================================
+  // ADMIN ASSIGN ROLE
+  // =====================================
+
+  @Patch(':id/role')
+  @Permissions('ASSIGN_ROLE')
+  assignRole(
+    @Param('id', ParseIntPipe)
+    id: number,
+
+    @Body() dto: AssignRoleDto,
+  ) {
+    return this.usersService.assignRole(
+      id,
+      dto.roleId,
     );
   }
 
-  return this.usersService.remove(id);
-}
+  // =====================================
+  // ADMIN ASSIGN DIRECT PERMISSIONS
+  // =====================================
+
+  @Patch(':id/permissions')
+  @Permissions('ASSIGN_PERMISSION')
+  assignPermissions(
+    @Param('id', ParseIntPipe)
+    id: number,
+
+    @Body()
+    dto: AssignPermissionsDto,
+  ) {
+    return this.usersService.assignPermissions(
+      id,
+      dto.permissionIds,
+    );
+  }
+
+  // =====================================
+  // ADMIN ACTIVATE / DEACTIVATE
+  // =====================================
+
+  @Patch(':id/status')
+  @Permissions('ACTIVATE_USER')
+  updateStatus(
+    @Param('id', ParseIntPipe)
+    id: number,
+
+    @Body()
+    dto: UpdateStatusDto,
+  ) {
+    return this.usersService.updateStatus(
+      id,
+      dto.status,
+    );
+  }
 }

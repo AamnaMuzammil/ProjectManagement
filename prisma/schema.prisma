@@ -13,19 +13,89 @@ enum ProjectStatus {
   rejected
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model User {
-  id         Int       @id @default(autoincrement())
+  id         Int        @id @default(autoincrement())
   name       String
-  email      String    @unique
+  email      String     @unique
   password   String
   department String?
+  status     UserStatus @default(ACTIVE)
 
-  projects   Project[]
+  projects      Project[]
+  roles         UserRole[]
+  permissions   UserPermission[]
+  assignedTasks Task[]
 
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+model Role {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  users       UserRole[]
+  permissions RolePermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  roles RolePermission[]
+  users UserPermission[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserPermission {
+  userId       Int
+  permissionId Int
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([userId, permissionId])
+  @@map("user_permissions")
 }
 
 model Project {
@@ -35,12 +105,33 @@ model Project {
   status      ProjectStatus
   createdBy   Int
 
-  user        User          @relation(fields: [createdBy], references: [id])
+  user  User   @relation(fields: [createdBy], references: [id])
+  tasks Task[]
 
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  deletedAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   @@index([createdBy])
   @@map("projects")
+}
+
+model Task {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String?
+
+  projectId  Int
+  assignedTo Int
+
+  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee User    @relation(fields: [assignedTo], references: [id])
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([projectId])
+  @@index([assignedTo])
+  @@map("tasks")
 }

@@ -95,10 +95,25 @@ export class PermissionsGuard implements CanActivate {
       ...directPermissions,
     ]);
 
+    // ==============================
+    // TEMPORARY DEBUG LOGS
+    // ==============================
+
+    console.log('================ PERMISSION DEBUG ================');
+    console.log('USER ID:', userId);
+    console.log('REQUIRED:', requiredPermissions);
+    console.log('ROLE:', user.roles.map((r) => r.role.name));
+    console.log('ROLE PERMISSIONS:', rolePermissions);
+    console.log('DIRECT PERMISSIONS:', directPermissions);
+    console.log('ALL PERMISSIONS:', [...allPermissions]);
+    console.log('===================================================');
+
     // Required permissions check
     const hasPermission = requiredPermissions.every(
       (permission) => allPermissions.has(permission),
     );
+
+    console.log('HAS PERMISSION:', hasPermission);
 
     if (!hasPermission) {
       throw new ForbiddenException(

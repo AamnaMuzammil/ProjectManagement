@@ -26,9 +26,17 @@ model User {
   department String?
   status     UserStatus @default(ACTIVE)
 
-  projects      Project[]
-  roles         UserRole[]
-  permissions   UserPermission[]
+  // Existing project creator relation
+  projects Project[]
+
+  // New: projects where user is a member
+  projectMemberships ProjectMember[]
+
+  // Existing RBAC relations
+  roles       UserRole[]
+  permissions UserPermission[]
+
+  // Existing task relation
   assignedTasks Task[]
 
   createdAt DateTime @default(now())
@@ -103,9 +111,17 @@ model Project {
   name        String
   description String?
   status      ProjectStatus
-  createdBy   Int
 
-  user  User   @relation(fields: [createdBy], references: [id])
+  // Project creator / manager
+  createdBy Int
+
+  // Existing relation - kept unchanged
+  user User @relation(fields: [createdBy], references: [id])
+
+  // New: multiple employees can work on project
+  members ProjectMember[]
+
+  // Existing relation - kept unchanged
   tasks Task[]
 
   createdAt DateTime  @default(now())
@@ -116,6 +132,20 @@ model Project {
   @@map("projects")
 }
 
+model ProjectMember {
+  projectId Int
+  userId    Int
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  joinedAt DateTime @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
 model Task {
   id          Int     @id @default(autoincrement())
   title       String
@@ -124,8 +154,16 @@ model Task {
   projectId  Int
   assignedTo Int
 
+  // New: optional parent task
+  parentTaskId Int?
+
+  // Existing relations - kept unchanged
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee User    @relation(fields: [assignedTo], references: [id])
+
+  // New: task/subtask self relation
+  parentTask Task?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  subtasks   Task[] @relation("TaskSubtasks")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -133,5 +171,6 @@ model Task {
 
   @@index([projectId])
   @@index([assignedTo])
+  @@index([parentTaskId])
   @@map("tasks")
 }

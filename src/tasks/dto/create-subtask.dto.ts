@@ -7,7 +7,7 @@ import {
 
 import { Type } from 'class-transformer';
 
-export class CreateTaskDto {
+export class CreateSubtaskDto {
   @IsString()
   @IsNotEmpty()
   title: string;
@@ -15,11 +15,6 @@ export class CreateTaskDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @Type(() => Number)
-  @IsInt()
-  @IsNotEmpty()
-  projectId: number;
 
   @Type(() => Number)
   @IsInt()

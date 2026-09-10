@@ -1,8 +1,8 @@
 import {
   IsEnum,
+  IsNotEmpty,
   IsOptional,
   IsString,
-  IsNotEmpty,
 } from 'class-validator';
 
 import { ProjectStatus } from '../../generated/prisma/client';

@@ -58,6 +58,7 @@ export const ModelName = {
   RolePermission: 'RolePermission',
   UserPermission: 'UserPermission',
   Project: 'Project',
+  ProjectMember: 'ProjectMember',
   Task: 'Task'
 } as const
 
@@ -149,12 +150,22 @@ export const ProjectScalarFieldEnum = {
 export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
 
 
+export const ProjectMemberScalarFieldEnum = {
+  projectId: 'projectId',
+  userId: 'userId',
+  joinedAt: 'joinedAt'
+} as const
+
+export type ProjectMemberScalarFieldEnum = (typeof ProjectMemberScalarFieldEnum)[keyof typeof ProjectMemberScalarFieldEnum]
+
+
 export const TaskScalarFieldEnum = {
   id: 'id',
   title: 'title',
   description: 'description',
   projectId: 'projectId',
   assignedTo: 'assignedTo',
+  parentTaskId: 'parentTaskId',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   deletedAt: 'deletedAt'

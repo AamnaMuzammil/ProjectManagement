@@ -16,6 +16,7 @@ import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { AddProjectMemberDto } from './dto/add-project-member.dto';
+import { AddProjectManagerDto } from './dto/add-project-manager.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../common/decorators/get-user.decorator';
@@ -38,7 +39,10 @@ export class ProjectsController {
     @Body() dto: CreateProjectDto,
     @GetUser('userId') userId: number,
   ) {
-    return this.projectsService.create(dto, userId);
+    return this.projectsService.create(
+      dto,
+      userId,
+    );
   }
 
   // =========================================================
@@ -62,7 +66,9 @@ export class ProjectsController {
     )
     status: ProjectStatus,
   ) {
-    return this.projectsService.findByStatus(status);
+    return this.projectsService.findByStatus(
+      status,
+    );
   }
 
   // =========================================================
@@ -83,9 +89,7 @@ export class ProjectsController {
   @Patch(':id')
   update(
     @Param('id', ParseIntPipe) id: number,
-
     @Body() dto: UpdateProjectDto,
-
     @GetUser('userId') userId: number,
   ) {
     return this.projectsService.update(
@@ -102,7 +106,6 @@ export class ProjectsController {
   @Delete(':id')
   remove(
     @Param('id', ParseIntPipe) id: number,
-
     @GetUser('userId') userId: number,
   ) {
     return this.projectsService.remove(
@@ -112,15 +115,30 @@ export class ProjectsController {
   }
 
   // =========================================================
-  // ADD MEMBER
+  // ADD PROJECT MANAGERS
+  // =========================================================
+
+  @Post(':id/managers')
+  addManagers(
+    @Param('id', ParseIntPipe) projectId: number,
+    @Body() dto: AddProjectManagerDto,
+    @GetUser('userId') userId: number,
+  ) {
+    return this.projectsService.addManagers(
+      projectId,
+      dto,
+      userId,
+    );
+  }
+
+  // =========================================================
+  // ADD PROJECT MEMBER
   // =========================================================
 
   @Post(':id/members')
   addMember(
     @Param('id', ParseIntPipe) projectId: number,
-
     @Body() dto: AddProjectMemberDto,
-
     @GetUser('userId') userId: number,
   ) {
     return this.projectsService.addMember(
@@ -131,15 +149,13 @@ export class ProjectsController {
   }
 
   // =========================================================
-  // REMOVE MEMBER
+  // REMOVE PROJECT MEMBER
   // =========================================================
 
   @Delete(':id/members/:memberId')
   removeMember(
     @Param('id', ParseIntPipe) projectId: number,
-
     @Param('memberId', ParseIntPipe) memberId: number,
-
     @GetUser('userId') userId: number,
   ) {
     return this.projectsService.removeMember(

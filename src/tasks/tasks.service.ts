@@ -10,6 +10,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateSubtaskDto } from './dto/create-subtask.dto';
+import {
+  TaskCategory,
+  TaskStatus,
+} from '../generated/prisma/client';
+
+import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 
 @Injectable()
 export class TasksService {
@@ -18,7 +24,7 @@ export class TasksService {
   ) {}
 
   // =========================================================
-  // CHECK PROJECT MANAGER / PROJECT OWNER
+  // CHECK PROJECT OWNER / PROJECT MANAGER
   // =========================================================
 
   private async checkProjectOwner(
@@ -46,6 +52,47 @@ export class TasksService {
 
     return project;
   }
+
+  private async checkProjectManager(
+  projectId: number,
+  userId: number,
+) {
+  const project = await this.prisma.project.findFirst({
+    where: {
+      id: projectId,
+      deletedAt: null,
+    },
+  });
+
+  if (!project) {
+    throw new NotFoundException(
+      'Project not found',
+    );
+  }
+
+  // Project creator is also considered a manager
+  if (project.createdBy === userId) {
+    return true;
+  }
+
+  const manager =
+    await this.prisma.projectManager.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId,
+        },
+      },
+    });
+
+  if (!manager) {
+    throw new ForbiddenException(
+      'Only project managers can mark specific tasks as completed',
+    );
+  }
+
+  return true;
+}
 
   // =========================================================
   // CHECK USER EXISTS
@@ -88,8 +135,7 @@ export class TasksService {
       );
     }
 
-    // Project owner/manager is automatically part of
-    // his own project
+    // Project owner is automatically part of project
     if (project.createdBy === userId) {
       return true;
     }
@@ -121,7 +167,7 @@ export class TasksService {
     dto: CreateTaskDto,
     userId: number,
   ) {
-    // Only project owner can create task
+    // Only project owner can currently create task
     await this.checkProjectOwner(
       dto.projectId,
       userId,
@@ -142,6 +188,22 @@ export class TasksService {
         description: dto.description,
         projectId: dto.projectId,
         assignedTo: dto.assignedTo,
+
+        // Optional fields
+        ...(dto.priority !== undefined && {
+          priority: dto.priority,
+        }),
+
+        ...(dto.category !== undefined && {
+          category: dto.category,
+        }),
+
+        ...(dto.dueDate !== undefined && {
+          dueDate: new Date(dto.dueDate),
+        }),
+
+        // status and assignedAt are automatically
+        // handled by Prisma defaults
       },
 
       include: {
@@ -337,17 +399,15 @@ export class TasksService {
       );
     }
 
-    // Only project owner can manage task
+    // Only project owner can currently manage task
     await this.checkProjectOwner(
       task.projectId,
       userId,
     );
 
     // If assignedTo is changing,
-    // new user must be project member
-    if (
-      dto.assignedTo !== undefined
-    ) {
+    // new user must be a project member
+    if (dto.assignedTo !== undefined) {
       await this.checkUser(dto.assignedTo);
 
       await this.checkProjectMember(
@@ -373,6 +433,18 @@ export class TasksService {
         ...(dto.assignedTo !== undefined && {
           assignedTo: dto.assignedTo,
         }),
+
+        ...(dto.priority !== undefined && {
+          priority: dto.priority,
+        }),
+
+        ...(dto.category !== undefined && {
+          category: dto.category,
+        }),
+
+        ...(dto.dueDate !== undefined && {
+          dueDate: new Date(dto.dueDate),
+        }),
       },
 
       include: {
@@ -392,10 +464,75 @@ export class TasksService {
         },
       },
     });
+    
+  }
+  async updateStatus(
+  id: number,
+  dto: UpdateTaskStatusDto,
+  userId: number,
+) {
+  const task = await this.prisma.task.findFirst({
+    where: {
+      id,
+      deletedAt: null,
+    },
+  });
+
+  if (!task) {
+    throw new NotFoundException(
+      'Task not found',
+    );
   }
 
+  // User must belong to the project
+  await this.checkProjectMember(
+    task.projectId,
+    userId,
+  );
+
+  // SPECIFIC task:
+  // only project manager can mark it COMPLETED
+  if (
+    task.category === TaskCategory.SPECIFIC &&
+    dto.status === TaskStatus.COMPLETED
+  ) {
+    await this.checkProjectManager(
+      task.projectId,
+      userId,
+    );
+  }
+
+  return this.prisma.task.update({
+    where: {
+      id,
+    },
+
+    data: {
+      status: dto.status,
+    },
+
+    include: {
+      project: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+
+      assignee: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+        },
+      },
+    },
+  });
+}
+
   // =========================================================
-  // DELETE TASK
+  // DELETE TASK - SOFT DELETE
   // =========================================================
 
   async remove(
@@ -478,8 +615,10 @@ export class TasksService {
       data: {
         title: dto.title,
         description: dto.description,
+
         projectId: parentTask.projectId,
         assignedTo: dto.assignedTo,
+
         parentTaskId,
       },
 

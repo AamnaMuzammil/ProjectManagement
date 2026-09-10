@@ -21,7 +21,7 @@ import { GetUser } from '../common/decorators/get-user.decorator';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { AssignRoleDto } from './dto/assign-role.dto';
+import { AssignRoleDto, AssignRolesDto } from './dto/assign-role.dto';
 import { AssignPermissionsDto } from './dto/assign-permissions.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 
@@ -70,6 +70,19 @@ export class UsersController {
   ) {
     return this.usersService.create(dto);
   }
+
+
+
+@Post(':id/roles')
+@Permissions('ASSIGN_ROLE')
+assignRoles(
+  @Param('id', ParseIntPipe) id: number,
+  @Body() dto: AssignRolesDto,
+) {
+  return this.usersService.assignRoles(id, dto);
+}
+
+
 
  // =====================================
 // UPDATE USER

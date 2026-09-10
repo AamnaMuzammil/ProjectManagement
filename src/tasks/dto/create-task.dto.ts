@@ -1,4 +1,6 @@
 import {
+  IsDateString,
+  IsEnum,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -6,6 +8,11 @@ import {
 } from 'class-validator';
 
 import { Type } from 'class-transformer';
+
+import {
+  TaskCategory,
+  TaskPriority,
+} from '../../generated/prisma/client';
 
 export class CreateTaskDto {
   @IsString()
@@ -25,4 +32,16 @@ export class CreateTaskDto {
   @IsInt()
   @IsNotEmpty()
   assignedTo: number;
+
+  @IsOptional()
+  @IsEnum(TaskPriority)
+  priority?: TaskPriority;
+
+  @IsOptional()
+  @IsEnum(TaskCategory)
+  category?: TaskCategory;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
 }

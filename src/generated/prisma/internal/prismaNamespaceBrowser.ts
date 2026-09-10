@@ -58,8 +58,10 @@ export const ModelName = {
   RolePermission: 'RolePermission',
   UserPermission: 'UserPermission',
   Project: 'Project',
+  ProjectManager: 'ProjectManager',
   ProjectMember: 'ProjectMember',
-  Task: 'Task'
+  Task: 'Task',
+  Comment: 'Comment'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -150,6 +152,15 @@ export const ProjectScalarFieldEnum = {
 export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
 
 
+export const ProjectManagerScalarFieldEnum = {
+  projectId: 'projectId',
+  userId: 'userId',
+  assignedAt: 'assignedAt'
+} as const
+
+export type ProjectManagerScalarFieldEnum = (typeof ProjectManagerScalarFieldEnum)[keyof typeof ProjectManagerScalarFieldEnum]
+
+
 export const ProjectMemberScalarFieldEnum = {
   projectId: 'projectId',
   userId: 'userId',
@@ -166,12 +177,29 @@ export const TaskScalarFieldEnum = {
   projectId: 'projectId',
   assignedTo: 'assignedTo',
   parentTaskId: 'parentTaskId',
+  status: 'status',
+  priority: 'priority',
+  category: 'category',
+  assignedAt: 'assignedAt',
+  dueDate: 'dueDate',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   deletedAt: 'deletedAt'
 } as const
 
 export type TaskScalarFieldEnum = (typeof TaskScalarFieldEnum)[keyof typeof TaskScalarFieldEnum]
+
+
+export const CommentScalarFieldEnum = {
+  id: 'id',
+  description: 'description',
+  userId: 'userId',
+  taskId: 'taskId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CommentScalarFieldEnum = (typeof CommentScalarFieldEnum)[keyof typeof CommentScalarFieldEnum]
 
 
 export const SortOrder = {

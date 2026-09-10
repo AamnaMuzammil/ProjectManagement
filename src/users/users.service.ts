@@ -10,6 +10,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AssignRolesDto } from './dto/assign-role.dto';
 
 @Injectable()
 export class UsersService {
@@ -497,4 +498,92 @@ export class UsersService {
       user: updatedUser,
     };
   }
+
+ 
+async assignRoles(userId: number, dto: AssignRolesDto) {
+  // Check user
+  const user = await this.prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new NotFoundException('User not found');
+  }
+
+  // Remove duplicate role IDs from request
+  const uniqueRoleIds = [...new Set(dto.roleIds)];
+
+  // Check that all roles exist
+  const roles = await this.prisma.role.findMany({
+    where: {
+      id: {
+        in: uniqueRoleIds,
+      },
+    },
+  });
+
+  if (roles.length !== uniqueRoleIds.length) {
+    const foundRoleIds = roles.map((role) => role.id);
+
+    const missingRoleIds = uniqueRoleIds.filter(
+      (roleId) => !foundRoleIds.includes(roleId),
+    );
+
+    throw new NotFoundException(
+      `Role(s) not found: ${missingRoleIds.join(', ')}`,
+    );
+  }
+
+  // Get user's existing roles
+  const existingRoles = await this.prisma.userRole.findMany({
+    where: {
+      userId,
+      roleId: {
+        in: uniqueRoleIds,
+      },
+    },
+  });
+
+  const existingRoleIds = existingRoles.map(
+    (userRole) => userRole.roleId,
+  );
+
+  // Only add roles that user doesn't already have
+  const newRoleIds = uniqueRoleIds.filter(
+    (roleId) => !existingRoleIds.includes(roleId),
+  );
+
+  if (newRoleIds.length === 0) {
+    throw new ConflictException(
+      'User already has all selected roles',
+    );
+  }
+
+  // Add new roles without removing existing roles
+  await this.prisma.userRole.createMany({
+    data: newRoleIds.map((roleId) => ({
+      userId,
+      roleId,
+    })),
+  });
+
+  // Return updated user with all roles
+  return this.prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      department: true,
+      status: true,
+      roles: {
+        include: {
+          role: true,
+        },
+      },
+    },
+  });
+}
+
+
 }

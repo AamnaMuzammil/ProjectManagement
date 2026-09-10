@@ -1,4 +1,3 @@
-
 import {
   ArrayNotEmpty,
   IsArray,
@@ -6,17 +5,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export class AssignRoleDto {
-  @IsInt()
-  @Type(() => Number)
-  roleId: number;
-}
-
-export class AssignRolesDto {
+export class AddProjectManagerDto {
   @IsArray()
   @ArrayNotEmpty()
   @Type(() => Number)
   @IsInt({ each: true })
-  roleIds: number[];
+  userIds: number[];
 }
-

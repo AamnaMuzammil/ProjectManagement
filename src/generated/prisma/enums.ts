@@ -24,3 +24,36 @@ export const UserStatus = {
 } as const
 
 export type UserStatus = (typeof UserStatus)[keyof typeof UserStatus]
+
+
+export const TaskPriority = {
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+  URGENT: 'URGENT'
+} as const
+
+export type TaskPriority = (typeof TaskPriority)[keyof typeof TaskPriority]
+
+
+export const TaskCategory = {
+  GENERIC: 'GENERIC',
+  SPECIFIC: 'SPECIFIC'
+} as const
+
+export type TaskCategory = (typeof TaskCategory)[keyof typeof TaskCategory]
+
+
+export const TaskStatus = {
+  PENDING: 'PENDING',
+  STARTED: 'STARTED',
+  IN_PROGRESS: 'IN_PROGRESS',
+  TESTING: 'TESTING',
+  TESTED: 'TESTED',
+  DEBUG: 'DEBUG',
+  FINISHED: 'FINISHED',
+  REJECTED: 'REJECTED',
+  COMPLETED: 'COMPLETED'
+} as const
+
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus]

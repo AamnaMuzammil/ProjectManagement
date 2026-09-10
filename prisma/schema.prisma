@@ -7,6 +7,10 @@ datasource db {
   provider = "postgresql"
 }
 
+// =========================
+// ENUMS
+// =========================
+
 enum ProjectStatus {
   inprocess
   delivered
@@ -18,6 +22,34 @@ enum UserStatus {
   INACTIVE
 }
 
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskCategory {
+  GENERIC
+  SPECIFIC
+}
+
+enum TaskStatus {
+  PENDING
+  STARTED
+  IN_PROGRESS
+  TESTING
+  TESTED
+  DEBUG
+  FINISHED
+  REJECTED
+  COMPLETED
+}
+
+// =========================
+// USER
+// =========================
+
 model User {
   id         Int        @id @default(autoincrement())
   name       String
@@ -26,24 +58,36 @@ model User {
   department String?
   status     UserStatus @default(ACTIVE)
 
-  // Existing project creator relation
+  // Projects created by this user
   projects Project[]
 
-  // New: projects where user is a member
+  // Projects where this user is a member
   projectMemberships ProjectMember[]
 
-  // Existing RBAC relations
-  roles       UserRole[]
+  // Projects where this user is a manager
+  managedProjects ProjectManager[]
+
+  // Roles assigned to this user
+  roles UserRole[]
+
+  // Direct permissions assigned to this user
   permissions UserPermission[]
 
-  // Existing task relation
+  // Tasks assigned to this user
   assignedTasks Task[]
+
+  // Comments created by this user
+  comments Comment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
 }
+
+// =========================
+// ROLE
+// =========================
 
 model Role {
   id   Int    @id @default(autoincrement())
@@ -58,6 +102,10 @@ model Role {
   @@map("roles")
 }
 
+// =========================
+// PERMISSION
+// =========================
+
 model Permission {
   id   Int    @id @default(autoincrement())
   name String @unique
@@ -71,6 +119,10 @@ model Permission {
   @@map("permissions")
 }
 
+// =========================
+// USER ↔ ROLE
+// =========================
+
 model UserRole {
   userId Int
   roleId Int
@@ -83,11 +135,16 @@ model UserRole {
   @@map("user_roles")
 }
 
+// =========================
+// ROLE ↔ PERMISSION
+// =========================
+
 model RolePermission {
   roleId       Int
   permissionId Int
 
-  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
@@ -95,16 +152,25 @@ model RolePermission {
   @@map("role_permissions")
 }
 
+// =========================
+// USER ↔ DIRECT PERMISSION
+// =========================
+
 model UserPermission {
   userId       Int
   permissionId Int
 
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([userId, permissionId])
   @@map("user_permissions")
 }
+
+// =========================
+// PROJECT
+// =========================
 
 model Project {
   id          Int           @id @default(autoincrement())
@@ -112,16 +178,18 @@ model Project {
   description String?
   status      ProjectStatus
 
-  // Project creator / manager
+  // Original creator / owner
   createdBy Int
 
-  // Existing relation - kept unchanged
   user User @relation(fields: [createdBy], references: [id])
 
-  // New: multiple employees can work on project
+  // Multiple project managers
+  managers ProjectManager[]
+
+  // Project members
   members ProjectMember[]
 
-  // Existing relation - kept unchanged
+  // Project tasks
   tasks Task[]
 
   createdAt DateTime  @default(now())
@@ -129,15 +197,40 @@ model Project {
   deletedAt DateTime?
 
   @@index([createdBy])
+  @@index([status])
   @@map("projects")
 }
+
+// =========================
+// PROJECT ↔ MANAGERS
+// =========================
+
+model ProjectManager {
+  projectId Int
+  userId    Int
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now())
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_managers")
+}
+
+// =========================
+// PROJECT ↔ MEMBERS
+// =========================
 
 model ProjectMember {
   projectId Int
   userId    Int
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   joinedAt DateTime @default(now())
 
@@ -145,6 +238,10 @@ model ProjectMember {
   @@index([userId])
   @@map("project_members")
 }
+
+// =========================
+// TASK
+// =========================
 
 model Task {
   id          Int     @id @default(autoincrement())
@@ -154,16 +251,29 @@ model Task {
   projectId  Int
   assignedTo Int
 
-  // New: optional parent task
   parentTaskId Int?
 
-  // Existing relations - kept unchanged
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee User    @relation(fields: [assignedTo], references: [id])
+  // Task information
+  status   TaskStatus   @default(PENDING)
+  priority TaskPriority @default(MEDIUM)
+  category TaskCategory @default(GENERIC)
 
-  // New: task/subtask self relation
-  parentTask Task?  @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
-  subtasks   Task[] @relation("TaskSubtasks")
+  // Assignment / deadline
+  assignedAt DateTime  @default(now())
+  dueDate    DateTime?
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assignee User @relation(fields: [assignedTo], references: [id], onDelete: Cascade)
+
+  // Self relation for subtasks
+  parentTask Task? @relation("TaskSubtasks", fields: [parentTaskId], references: [id], onDelete: Cascade)
+
+  subtasks Task[] @relation("TaskSubtasks")
+
+  // Task comments
+  comments Comment[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -172,5 +282,35 @@ model Task {
   @@index([projectId])
   @@index([assignedTo])
   @@index([parentTaskId])
+  @@index([status])
+  @@index([priority])
+  @@index([category])
+  @@index([dueDate])
   @@map("tasks")
+}
+
+// =========================
+// COMMENT
+// =========================
+
+model Comment {
+  id          Int    @id @default(autoincrement())
+  description String
+
+  // User who created the comment
+  userId Int
+
+  // Task on which comment was made
+  taskId Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([taskId])
+  @@map("comments")
 }

@@ -53,6 +53,11 @@ export type UserPermission = Prisma.UserPermissionModel
  */
 export type Project = Prisma.ProjectModel
 /**
+ * Model ProjectManager
+ * 
+ */
+export type ProjectManager = Prisma.ProjectManagerModel
+/**
  * Model ProjectMember
  * 
  */
@@ -62,3 +67,8 @@ export type ProjectMember = Prisma.ProjectMemberModel
  * 
  */
 export type Task = Prisma.TaskModel
+/**
+ * Model Comment
+ * 
+ */
+export type Comment = Prisma.CommentModel

@@ -30,7 +30,7 @@ export class EmployeesService {
   async findAll() {
     return this.prisma.user.findMany({
       where: {
-        roles: {
+        projectMemberships: {
           some: {
             role: {
               name: {
@@ -40,17 +40,26 @@ export class EmployeesService {
           },
         },
       },
+
       select: {
         id: true,
         name: true,
         email: true,
         department: true,
         status: true,
-        roles: {
+
+        projectMemberships: {
           include: {
             role: true,
+            project: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
+
         createdAt: true,
         updatedAt: true,
       },
@@ -58,23 +67,33 @@ export class EmployeesService {
   }
 
   async findOne(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        department: true,
-        status: true,
-        roles: {
-          include: {
-            role: true,
+    const user =
+      await this.prisma.user.findUnique({
+        where: { id },
+
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          department: true,
+          status: true,
+
+          projectMemberships: {
+            include: {
+              role: true,
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
           },
+
+          createdAt: true,
+          updatedAt: true,
         },
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+      });
 
     if (!user) {
       throw new NotFoundException(
@@ -82,12 +101,13 @@ export class EmployeesService {
       );
     }
 
-    const isEmployee = user.roles.some(
-      (userRole) =>
-        this.employeeRoles.includes(
-          userRole.role.name,
-        ),
-    );
+    const isEmployee =
+      user.projectMemberships.some(
+        (membership) =>
+          this.employeeRoles.includes(
+            membership.role.name,
+          ),
+      );
 
     if (!isEmployee) {
       throw new NotFoundException(
@@ -136,6 +156,15 @@ export class EmployeesService {
     const hashedPassword =
       await argon2.hash(dto.password);
 
+    /*
+     * Role is now project-specific.
+     *
+     * Employee creation only creates the User.
+     * The actual role will be assigned when the
+     * employee is added to a project through
+     * ProjectMember.
+     */
+
     const employee =
       await this.prisma.user.create({
         data: {
@@ -143,12 +172,6 @@ export class EmployeesService {
           email: dto.email,
           password: hashedPassword,
           department: dto.department,
-
-          roles: {
-            create: {
-              roleId: role.id,
-            },
-          },
         },
 
         select: {
@@ -157,11 +180,6 @@ export class EmployeesService {
           email: true,
           department: true,
           status: true,
-          roles: {
-            include: {
-              role: true,
-            },
-          },
           createdAt: true,
         },
       });
@@ -192,6 +210,13 @@ export class EmployeesService {
       data.department = dto.department;
     }
 
+    /*
+     * Role is project-specific now.
+     *
+     * If roleId is provided, update the employee's
+     * role in all projects where this employee is
+     * already a member.
+     */
     if (dto.roleId !== undefined) {
       const role =
         await this.prisma.role.findUnique({
@@ -216,15 +241,16 @@ export class EmployeesService {
         );
       }
 
-      await this.prisma.userRole.deleteMany({
+      await this.prisma.projectMember.updateMany({
         where: {
           userId: employee.id,
+          role: {
+            name: {
+              in: this.employeeRoles,
+            },
+          },
         },
-      });
-
-      await this.prisma.userRole.create({
         data: {
-          userId: employee.id,
           roleId: role.id,
         },
       });
@@ -233,18 +259,28 @@ export class EmployeesService {
     const updated =
       await this.prisma.user.update({
         where: { id },
+
         data,
+
         select: {
           id: true,
           name: true,
           email: true,
           department: true,
           status: true,
-          roles: {
+
+          projectMemberships: {
             include: {
               role: true,
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
             },
           },
+
           updatedAt: true,
         },
       });

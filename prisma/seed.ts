@@ -144,22 +144,19 @@ async function main() {
     });
   }
 
-    // =========================
+  // =========================
   // GIVE PROJECT MANAGER
   // PROJECT & TASK PERMISSIONS
   // =========================
 
-  const projectManagerRole =
-    await prisma.role.findUnique({
-      where: {
-        name: 'PROJECT_MANAGER',
-      },
-    });
+  const projectManagerRole = await prisma.role.findUnique({
+    where: {
+      name: 'PROJECT_MANAGER',
+    },
+  });
 
   if (!projectManagerRole) {
-    throw new Error(
-      'PROJECT_MANAGER role not found',
-    );
+    throw new Error('PROJECT_MANAGER role not found');
   }
 
   const projectManagerPermissions = [
@@ -183,20 +180,15 @@ async function main() {
     'DELETE_SUBTASK',
   ];
 
-  for (
-    const permissionName of projectManagerPermissions
-  ) {
-    const permission =
-      await prisma.permission.findUnique({
-        where: {
-          name: permissionName,
-        },
-      });
+  for (const permissionName of projectManagerPermissions) {
+    const permission = await prisma.permission.findUnique({
+      where: {
+        name: permissionName,
+      },
+    });
 
     if (!permission) {
-      throw new Error(
-        `Permission ${permissionName} not found`,
-      );
+      throw new Error(`Permission ${permissionName} not found`);
     }
 
     await prisma.rolePermission.upsert({
@@ -216,9 +208,7 @@ async function main() {
     });
   }
 
-  console.log(
-    'PROJECT_MANAGER project/task permissions assigned successfully',
-  );
+  console.log('PROJECT_MANAGER project/task permissions assigned successfully');
 
   // =========================
   // CREATE / FIND ADMIN USER
@@ -232,9 +222,9 @@ async function main() {
     },
 
     update: {
-      // Password seed ke time update ho jayega
       password: hashedPassword,
       status: 'ACTIVE',
+      isAdmin: true,
     },
 
     create: {
@@ -242,6 +232,7 @@ async function main() {
       email: adminEmail,
       password: hashedPassword,
       status: 'ACTIVE',
+      isAdmin: true,
     },
   });
 
@@ -249,21 +240,7 @@ async function main() {
   // ASSIGN ADMIN ROLE
   // =========================
 
-  await prisma.userRole.upsert({
-    where: {
-      userId_roleId: {
-        userId: adminUser.id,
-        roleId: adminRole.id,
-      },
-    },
 
-    update: {},
-
-    create: {
-      userId: adminUser.id,
-      roleId: adminRole.id,
-    },
-  });
 
   console.log('Roles seeded successfully');
 

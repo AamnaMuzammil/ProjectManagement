@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -16,13 +17,11 @@ import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../common/guards/permissions.guard';
 import { Permissions } from '../common/decorators/permissions.decorator';
-
 import { GetUser } from '../common/decorators/get-user.decorator';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { AssignRoleDto, AssignRolesDto } from './dto/assign-role.dto';
-import { AssignPermissionsDto } from './dto/assign-permissions.dto';
+import { AssignRoleDto } from './dto/assign-role.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 
 @Controller('users')
@@ -37,7 +36,6 @@ export class UsersController {
 
   // =====================================
   // GET ALL USERS
-  // ADMIN / users with VIEW_USER
   // =====================================
 
   @Get()
@@ -60,7 +58,7 @@ export class UsersController {
   }
 
   // =====================================
-  // ADMIN CREATE USER
+  // CREATE USER
   // =====================================
 
   @Post()
@@ -71,32 +69,26 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
+  // =====================================
+  // UPDATE USER
+  // =====================================
 
+  @Patch(':id')
+  @Permissions('UPDATE_USER')
+  update(
+    @Param('id', ParseIntPipe)
+    id: number,
 
-@Post(':id/roles')
-@Permissions('ASSIGN_ROLE')
-assignRoles(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() dto: AssignRolesDto,
-) {
-  return this.usersService.assignRoles(id, dto);
-}
+    @Body() dto: UpdateUserDto,
+  ) {
+    return this.usersService.update(
+      id,
+      dto,
+    );
+  }
 
-
-
- // =====================================
-// UPDATE USER
-// =====================================
-
-@Patch(':id')
-@Permissions('UPDATE_USER')
-update(
-  @Param('id', ParseIntPipe) id: number,
-  @Body() dto: UpdateUserDto,
-) {
-  return this.usersService.update(id, dto);
-}// =====================================
-  // ADMIN DELETE USER
+  // =====================================
+  // DELETE USER
   // =====================================
 
   @Delete(':id')
@@ -118,7 +110,7 @@ update(
   }
 
   // =====================================
-  // ADMIN ASSIGN ROLE
+  // ASSIGN PROJECT ROLE
   // =====================================
 
   @Patch(':id/role')
@@ -131,31 +123,13 @@ update(
   ) {
     return this.usersService.assignRole(
       id,
+      dto.projectId,
       dto.roleId,
     );
   }
 
   // =====================================
-  // ADMIN ASSIGN DIRECT PERMISSIONS
-  // =====================================
-
-  @Patch(':id/permissions')
-  @Permissions('ASSIGN_PERMISSION')
-  assignPermissions(
-    @Param('id', ParseIntPipe)
-    id: number,
-
-    @Body()
-    dto: AssignPermissionsDto,
-  ) {
-    return this.usersService.assignPermissions(
-      id,
-      dto.permissionIds,
-    );
-  }
-
-  // =====================================
-  // ADMIN ACTIVATE / DEACTIVATE
+  // ACTIVATE / DEACTIVATE USER
   // =====================================
 
   @Patch(':id/status')
@@ -164,8 +138,7 @@ update(
     @Param('id', ParseIntPipe)
     id: number,
 
-    @Body()
-    dto: UpdateStatusDto,
+    @Body() dto: UpdateStatusDto,
   ) {
     return this.usersService.updateStatus(
       id,
@@ -173,3 +146,4 @@ update(
     );
   }
 }
+

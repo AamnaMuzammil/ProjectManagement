@@ -10,27 +10,19 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateSubtaskDto } from './dto/create-subtask.dto';
-import {
-  TaskCategory,
-  TaskStatus,
-} from '../generated/prisma/client';
+import { TaskCategory, TaskStatus } from '../generated/prisma/client';
 
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 
 @Injectable()
 export class TasksService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   // =========================================================
   // CHECK PROJECT OWNER / PROJECT MANAGER
   // =========================================================
 
-  private async checkProjectOwner(
-    projectId: number,
-    userId: number,
-  ) {
+  private async checkProjectOwner(projectId: number, userId: number) {
     const project = await this.prisma.project.findFirst({
       where: {
         id: projectId,
@@ -39,9 +31,7 @@ export class TasksService {
     });
 
     if (!project) {
-      throw new NotFoundException(
-        'Project not found',
-      );
+      throw new NotFoundException('Project not found');
     }
 
     if (project.createdBy !== userId) {
@@ -53,46 +43,43 @@ export class TasksService {
     return project;
   }
 
-  private async checkProjectManager(
-  projectId: number,
-  userId: number,
-) {
-  const project = await this.prisma.project.findFirst({
-    where: {
-      id: projectId,
-      deletedAt: null,
-    },
-  });
+  private async checkProjectManager(projectId: number, userId: number) {
+    const project = await this.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        deletedAt: null,
+      },
+    });
 
-  if (!project) {
-    throw new NotFoundException(
-      'Project not found',
-    );
-  }
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
 
-  // Project creator is also considered a manager
-  if (project.createdBy === userId) {
-    return true;
-  }
+    // Project creator is also considered a manager
+    if (project.createdBy === userId) {
+      return true;
+    }
 
-  const manager =
-    await this.prisma.projectManager.findUnique({
+    const manager = await this.prisma.projectMember.findUnique({
       where: {
         projectId_userId: {
           projectId,
           userId,
         },
       },
+      include: {
+        role: true,
+      },
     });
 
-  if (!manager) {
-    throw new ForbiddenException(
-      'Only project managers can mark specific tasks as completed',
-    );
-  }
+    if (!manager || manager.role.name !== 'PROJECT_MANAGER') {
+      throw new ForbiddenException(
+        'Only project managers can mark specific tasks as completed',
+      );
+    }
 
-  return true;
-}
+    return true;
+  }
 
   // =========================================================
   // CHECK USER EXISTS
@@ -106,9 +93,7 @@ export class TasksService {
     });
 
     if (!user) {
-      throw new NotFoundException(
-        'Assigned user not found',
-      );
+      throw new NotFoundException('Assigned user not found');
     }
 
     return user;
@@ -118,10 +103,7 @@ export class TasksService {
   // CHECK PROJECT MEMBER
   // =========================================================
 
-  private async checkProjectMember(
-    projectId: number,
-    userId: number,
-  ) {
+  private async checkProjectMember(projectId: number, userId: number) {
     const project = await this.prisma.project.findFirst({
       where: {
         id: projectId,
@@ -130,9 +112,7 @@ export class TasksService {
     });
 
     if (!project) {
-      throw new NotFoundException(
-        'Project not found',
-      );
+      throw new NotFoundException('Project not found');
     }
 
     // Project owner is automatically part of project
@@ -140,20 +120,17 @@ export class TasksService {
       return true;
     }
 
-    const member =
-      await this.prisma.projectMember.findUnique({
-        where: {
-          projectId_userId: {
-            projectId,
-            userId,
-          },
+    const member = await this.prisma.projectMember.findUnique({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId,
         },
-      });
+      },
+    });
 
     if (!member) {
-      throw new ForbiddenException(
-        'User is not a member of this project',
-      );
+      throw new ForbiddenException('User is not a member of this project');
     }
 
     return true;
@@ -163,24 +140,15 @@ export class TasksService {
   // CREATE TASK
   // =========================================================
 
-  async create(
-    dto: CreateTaskDto,
-    userId: number,
-  ) {
+  async create(dto: CreateTaskDto, userId: number) {
     // Only project owner can currently create task
-    await this.checkProjectOwner(
-      dto.projectId,
-      userId,
-    );
+    await this.checkProjectOwner(dto.projectId, userId);
 
     // Check assigned user exists
     await this.checkUser(dto.assignedTo);
 
     // Assigned user must belong to project
-    await this.checkProjectMember(
-      dto.projectId,
-      dto.assignedTo,
-    );
+    await this.checkProjectMember(dto.projectId, dto.assignedTo);
 
     return this.prisma.task.create({
       data: {
@@ -322,9 +290,7 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException(
-        'Task not found',
-      );
+      throw new NotFoundException('Task not found');
     }
 
     return task;
@@ -343,9 +309,7 @@ export class TasksService {
     });
 
     if (!project) {
-      throw new NotFoundException(
-        'Project not found',
-      );
+      throw new NotFoundException('Project not found');
     }
 
     return this.prisma.task.findMany({
@@ -381,11 +345,7 @@ export class TasksService {
   // UPDATE TASK
   // =========================================================
 
-  async update(
-    id: number,
-    dto: UpdateTaskDto,
-    userId: number,
-  ) {
+  async update(id: number, dto: UpdateTaskDto, userId: number) {
     const task = await this.prisma.task.findFirst({
       where: {
         id,
@@ -394,26 +354,18 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException(
-        'Task not found',
-      );
+      throw new NotFoundException('Task not found');
     }
 
     // Only project owner can currently manage task
-    await this.checkProjectOwner(
-      task.projectId,
-      userId,
-    );
+    await this.checkProjectOwner(task.projectId, userId);
 
     // If assignedTo is changing,
     // new user must be a project member
     if (dto.assignedTo !== undefined) {
       await this.checkUser(dto.assignedTo);
 
-      await this.checkProjectMember(
-        task.projectId,
-        dto.assignedTo,
-      );
+      await this.checkProjectMember(task.projectId, dto.assignedTo);
     }
 
     return this.prisma.task.update({
@@ -464,81 +416,8 @@ export class TasksService {
         },
       },
     });
-    
   }
-  async updateStatus(
-  id: number,
-  dto: UpdateTaskStatusDto,
-  userId: number,
-) {
-  const task = await this.prisma.task.findFirst({
-    where: {
-      id,
-      deletedAt: null,
-    },
-  });
-
-  if (!task) {
-    throw new NotFoundException(
-      'Task not found',
-    );
-  }
-
-  // User must belong to the project
-  await this.checkProjectMember(
-    task.projectId,
-    userId,
-  );
-
-  // SPECIFIC task:
-  // only project manager can mark it COMPLETED
-  if (
-    task.category === TaskCategory.SPECIFIC &&
-    dto.status === TaskStatus.COMPLETED
-  ) {
-    await this.checkProjectManager(
-      task.projectId,
-      userId,
-    );
-  }
-
-  return this.prisma.task.update({
-    where: {
-      id,
-    },
-
-    data: {
-      status: dto.status,
-    },
-
-    include: {
-      project: {
-        select: {
-          id: true,
-          name: true,
-        },
-      },
-
-      assignee: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          department: true,
-        },
-      },
-    },
-  });
-}
-
-  // =========================================================
-  // DELETE TASK - SOFT DELETE
-  // =========================================================
-
-  async remove(
-    id: number,
-    userId: number,
-  ) {
+  async updateStatus(id: number, dto: UpdateTaskStatusDto, userId: number) {
     const task = await this.prisma.task.findFirst({
       where: {
         id,
@@ -547,16 +426,68 @@ export class TasksService {
     });
 
     if (!task) {
-      throw new NotFoundException(
-        'Task not found',
-      );
+      throw new NotFoundException('Task not found');
+    }
+
+    // User must belong to the project
+    await this.checkProjectMember(task.projectId, userId);
+
+    // SPECIFIC task:
+    // only project manager can mark it COMPLETED
+    if (
+      task.category === TaskCategory.SPECIFIC &&
+      dto.status === TaskStatus.COMPLETED
+    ) {
+      await this.checkProjectManager(task.projectId, userId);
+    }
+
+    return this.prisma.task.update({
+      where: {
+        id,
+      },
+
+      data: {
+        status: dto.status,
+      },
+
+      include: {
+        project: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+
+        assignee: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            department: true,
+          },
+        },
+      },
+    });
+  }
+
+  // =========================================================
+  // DELETE TASK - SOFT DELETE
+  // =========================================================
+
+  async remove(id: number, userId: number) {
+    const task = await this.prisma.task.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+
+    if (!task) {
+      throw new NotFoundException('Task not found');
     }
 
     // Only project owner can delete task
-    await this.checkProjectOwner(
-      task.projectId,
-      userId,
-    );
+    await this.checkProjectOwner(task.projectId, userId);
 
     await this.prisma.task.update({
       where: {
@@ -582,34 +513,25 @@ export class TasksService {
     dto: CreateSubtaskDto,
     userId: number,
   ) {
-    const parentTask =
-      await this.prisma.task.findFirst({
-        where: {
-          id: parentTaskId,
-          deletedAt: null,
-        },
-      });
+    const parentTask = await this.prisma.task.findFirst({
+      where: {
+        id: parentTaskId,
+        deletedAt: null,
+      },
+    });
 
     if (!parentTask) {
-      throw new NotFoundException(
-        'Parent task not found',
-      );
+      throw new NotFoundException('Parent task not found');
     }
 
     // Only project owner can create subtask
-    await this.checkProjectOwner(
-      parentTask.projectId,
-      userId,
-    );
+    await this.checkProjectOwner(parentTask.projectId, userId);
 
     // Check assignee
     await this.checkUser(dto.assignedTo);
 
     // Assignee must belong to project
-    await this.checkProjectMember(
-      parentTask.projectId,
-      dto.assignedTo,
-    );
+    await this.checkProjectMember(parentTask.projectId, dto.assignedTo);
 
     return this.prisma.task.create({
       data: {
@@ -653,18 +575,15 @@ export class TasksService {
   // =========================================================
 
   async findSubtasks(parentTaskId: number) {
-    const parentTask =
-      await this.prisma.task.findFirst({
-        where: {
-          id: parentTaskId,
-          deletedAt: null,
-        },
-      });
+    const parentTask = await this.prisma.task.findFirst({
+      where: {
+        id: parentTaskId,
+        deletedAt: null,
+      },
+    });
 
     if (!parentTask) {
-      throw new NotFoundException(
-        'Parent task not found',
-      );
+      throw new NotFoundException('Parent task not found');
     }
 
     return this.prisma.task.findMany({
@@ -693,31 +612,22 @@ export class TasksService {
   // DELETE SUBTASK
   // =========================================================
 
-  async removeSubtask(
-    id: number,
-    userId: number,
-  ) {
-    const subtask =
-      await this.prisma.task.findFirst({
-        where: {
-          id,
-          deletedAt: null,
-          parentTaskId: {
-            not: null,
-          },
+  async removeSubtask(id: number, userId: number) {
+    const subtask = await this.prisma.task.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        parentTaskId: {
+          not: null,
         },
-      });
+      },
+    });
 
     if (!subtask) {
-      throw new NotFoundException(
-        'Subtask not found',
-      );
+      throw new NotFoundException('Subtask not found');
     }
 
-    await this.checkProjectOwner(
-      subtask.projectId,
-      userId,
-    );
+    await this.checkProjectOwner(subtask.projectId, userId);
 
     await this.prisma.task.update({
       where: {

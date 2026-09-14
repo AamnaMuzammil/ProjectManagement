@@ -23,8 +23,6 @@ export class PermissionsGuard implements CanActivate {
         [context.getHandler(), context.getClass()],
       );
 
-    // Agar endpoint par koi permission required nahi hai
-    // to request allow kar do
     if (!requiredPermissions || requiredPermissions.length === 0) {
       return true;
     }
@@ -37,12 +35,118 @@ export class PermissionsGuard implements CanActivate {
       throw new ForbiddenException('User not authenticated');
     }
 
+    // =========================
+    // GET USER
+    // =========================
+
     const user = await this.prisma.user.findUnique({
       where: {
         id: userId,
       },
-      include: {
-        roles: {
+      select: {
+        id: true,
+        isAdmin: true,
+      },
+    });
+
+    if (!user) {
+      throw new ForbiddenException('User not found');
+    }
+
+    // =========================
+    // ADMIN
+    // =========================
+
+    if (user.isAdmin) {
+      return true;
+    }
+
+    // =========================
+    // FIND PROJECT ID
+    // =========================
+
+    let projectId: number | undefined;
+
+    if (request.params?.projectId) {
+      projectId = Number(request.params.projectId);
+    }
+
+    if (!projectId && request.body?.projectId) {
+      projectId = Number(request.body.projectId);
+    }
+
+    // /projects/:id
+    if (!projectId && request.params?.id) {
+      const controllerName = context.getClass().name;
+
+      if (controllerName === 'ProjectsController') {
+        projectId = Number(request.params.id);
+      }
+    }
+
+    // =========================
+    // TASK / COMMENT PROJECT
+    // =========================
+
+    if (!projectId && request.params?.id) {
+      const controllerName = context.getClass().name;
+
+      if (
+        controllerName === 'TasksController' ||
+        controllerName === 'CommentsController'
+      ) {
+        const taskId = Number(request.params.id);
+
+        if (!Number.isNaN(taskId)) {
+          const task = await this.prisma.task.findUnique({
+            where: {
+              id: taskId,
+            },
+            select: {
+              projectId: true,
+            },
+          });
+
+          if (task) {
+            projectId = task.projectId;
+          }
+        }
+      }
+    }
+
+    // =========================
+    // TASK ID FROM PARAM
+    // =========================
+
+    if (!projectId && request.params?.taskId) {
+      const taskId = Number(request.params.taskId);
+
+      if (!Number.isNaN(taskId)) {
+        const task = await this.prisma.task.findUnique({
+          where: {
+            id: taskId,
+          },
+          select: {
+            projectId: true,
+          },
+        });
+
+        if (task) {
+          projectId = task.projectId;
+        }
+      }
+    }
+
+    // =========================
+    // NO PROJECT CONTEXT
+    // =========================
+
+    if (!projectId) {
+      const memberships =
+        await this.prisma.projectMember.findMany({
+          where: {
+            userId,
+          },
           include: {
             role: {
               include: {
@@ -54,66 +158,76 @@ export class PermissionsGuard implements CanActivate {
               },
             },
           },
-        },
+        });
 
-        permissions: {
-          include: {
-            permission: true,
-          },
-        },
-      },
-    });
+      const allPermissions = new Set(
+        memberships.flatMap((membership) =>
+          membership.role.permissions.map(
+            (rolePermission) =>
+              rolePermission.permission.name,
+          ),
+        ),
+      );
 
-    if (!user) {
-      throw new ForbiddenException('User not found');
-    }
+      const hasPermission =
+        requiredPermissions.every((permission) =>
+          allPermissions.has(permission),
+        );
 
-    // ADMIN ko automatically full access
-    const isAdmin = user.roles.some(
-      (userRole) => userRole.role.name === 'ADMIN',
-    );
+      if (!hasPermission) {
+        throw new ForbiddenException(
+          'You do not have permission to perform this action',
+        );
+      }
 
-    if (isAdmin) {
       return true;
     }
 
-    // Role ke through milne wali permissions
-    const rolePermissions = user.roles.flatMap((userRole) =>
-      userRole.role.permissions.map(
-        (rolePermission) => rolePermission.permission.name,
-      ),
-    );
+    // =========================
+    // PROJECT MEMBERSHIP
+    // =========================
 
-    // Directly user ko di gayi permissions
-    const directPermissions = user.permissions.map(
-      (userPermission) => userPermission.permission.name,
-    );
+    const membership =
+      await this.prisma.projectMember.findUnique({
+        where: {
+          projectId_userId: {
+            projectId,
+            userId,
+          },
+        },
+        include: {
+          role: {
+            include: {
+              permissions: {
+                include: {
+                  permission: true,
+                },
+              },
+            },
+          },
+        },
+      });
 
-    // Dono permissions combine
-    const allPermissions = new Set([
-      ...rolePermissions,
-      ...directPermissions,
-    ]);
+    if (!membership) {
+      throw new ForbiddenException(
+        'You are not a member of this project',
+      );
+    }
 
-    // ==============================
-    // TEMPORARY DEBUG LOGS
-    // ==============================
+    const projectPermissions =
+      membership.role.permissions.map(
+        (rolePermission) =>
+          rolePermission.permission.name,
+      );
 
-    console.log('================ PERMISSION DEBUG ================');
-    console.log('USER ID:', userId);
-    console.log('REQUIRED:', requiredPermissions);
-    console.log('ROLE:', user.roles.map((r) => r.role.name));
-    console.log('ROLE PERMISSIONS:', rolePermissions);
-    console.log('DIRECT PERMISSIONS:', directPermissions);
-    console.log('ALL PERMISSIONS:', [...allPermissions]);
-    console.log('===================================================');
+    // =========================
+    // PERMISSION CHECK
+    // =========================
 
-    // Required permissions check
-    const hasPermission = requiredPermissions.every(
-      (permission) => allPermissions.has(permission),
-    );
-
-    console.log('HAS PERMISSION:', hasPermission);
+    const hasPermission =
+      requiredPermissions.every((permission) =>
+        projectPermissions.includes(permission),
+      );
 
     if (!hasPermission) {
       throw new ForbiddenException(

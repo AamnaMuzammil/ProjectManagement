@@ -33,30 +33,15 @@ export type Role = Prisma.RoleModel
  */
 export type Permission = Prisma.PermissionModel
 /**
- * Model UserRole
- * 
- */
-export type UserRole = Prisma.UserRoleModel
-/**
  * Model RolePermission
  * 
  */
 export type RolePermission = Prisma.RolePermissionModel
 /**
- * Model UserPermission
- * 
- */
-export type UserPermission = Prisma.UserPermissionModel
-/**
  * Model Project
  * 
  */
 export type Project = Prisma.ProjectModel
-/**
- * Model ProjectManager
- * 
- */
-export type ProjectManager = Prisma.ProjectManagerModel
 /**
  * Model ProjectMember
  * 

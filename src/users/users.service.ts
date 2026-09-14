@@ -1,3 +1,4 @@
+
 import {
   ConflictException,
   ForbiddenException,
@@ -10,7 +11,6 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { AssignRolesDto } from './dto/assign-role.dto';
 
 @Injectable()
 export class UsersService {
@@ -24,18 +24,15 @@ export class UsersService {
 
   async findAll() {
     return this.prisma.user.findMany({
-      where: {
-        // deleted users ka concept abhi nahi hai
-      },
-
       select: {
         id: true,
         name: true,
         email: true,
         department: true,
         status: true,
+        isAdmin: true,
 
-        roles: {
+        projectMemberships: {
           include: {
             role: {
               select: {
@@ -43,12 +40,7 @@ export class UsersService {
                 name: true,
               },
             },
-          },
-        },
-
-        permissions: {
-          include: {
-            permission: {
+            project: {
               select: {
                 id: true,
                 name: true,
@@ -83,8 +75,9 @@ export class UsersService {
         email: true,
         department: true,
         status: true,
+        isAdmin: true,
 
-        roles: {
+        projectMemberships: {
           include: {
             role: {
               select: {
@@ -92,12 +85,8 @@ export class UsersService {
                 name: true,
               },
             },
-          },
-        },
 
-        permissions: {
-          include: {
-            permission: {
+            project: {
               select: {
                 id: true,
                 name: true,
@@ -123,12 +112,12 @@ export class UsersService {
   // =========================
 
   async create(dto: CreateUserDto) {
-    // Check email already exists
-    const existingUser = await this.prisma.user.findUnique({
-      where: {
-        email: dto.email,
-      },
-    });
+    const existingUser =
+      await this.prisma.user.findUnique({
+        where: {
+          email: dto.email,
+        },
+      });
 
     if (existingUser) {
       throw new ConflictException(
@@ -136,56 +125,25 @@ export class UsersService {
       );
     }
 
-    // Roles
-    // Explicit type is required because [] alone becomes implicit any[]
-    let roles: { id: number; name: string }[] = [];
+    const hashedPassword =
+      await argon2.hash(dto.password);
 
-    if (dto.roleIds && dto.roleIds.length > 0) {
-      roles = await this.prisma.role.findMany({
-        where: {
-          id: {
-            in: dto.roleIds,
-          },
-        },
-      });
+    /*
+     * Roles are now project-specific.
+     *
+     * Therefore user creation does NOT assign
+     * any role.
+     *
+     * Role will be assigned when the user is
+     * added to a project through ProjectMember.
+     */
 
-      // Check all requested roles exist
-      if (roles.length !== dto.roleIds.length) {
-        throw new NotFoundException(
-          'One or more roles not found',
-        );
-      }
-
-      // ADMIN role cannot be assigned through this endpoint
-      const hasAdminRole = roles.some(
-        (role) => role.name === 'ADMIN',
-      );
-
-      if (hasAdminRole) {
-        throw new ForbiddenException(
-          'ADMIN role cannot be assigned through this endpoint',
-        );
-      }
-    }
-
-    // Hash password
-    const hashedPassword = await argon2.hash(
-      dto.password,
-    );
-
-    // Create user
     const user = await this.prisma.user.create({
       data: {
         name: dto.name,
         email: dto.email,
         password: hashedPassword,
         department: dto.department,
-
-        roles: {
-          create: roles.map((role) => ({
-            roleId: role.id,
-          })),
-        },
       },
 
       select: {
@@ -194,13 +152,7 @@ export class UsersService {
         email: true,
         department: true,
         status: true,
-
-        roles: {
-          include: {
-            role: true,
-          },
-        },
-
+        isAdmin: true,
         createdAt: true,
       },
     });
@@ -212,14 +164,13 @@ export class UsersService {
   }
 
   // =========================
-  // UPDATE OWN PROFILE / ADMIN UPDATE
+  // UPDATE USER
   // =========================
 
   async update(
     id: number,
     data: UpdateUserDto,
   ) {
-    // Check user exists
     await this.findOne(id);
 
     return this.prisma.user.update({
@@ -235,6 +186,7 @@ export class UsersService {
         email: true,
         department: true,
         status: true,
+        isAdmin: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -246,19 +198,17 @@ export class UsersService {
   // =========================
 
   async remove(id: number) {
-    const user = await this.prisma.user.findUnique({
-      where: {
-        id,
-      },
-
-      include: {
-        roles: {
-          include: {
-            role: true,
-          },
+    const user =
+      await this.prisma.user.findUnique({
+        where: {
+          id,
         },
-      },
-    });
+
+        select: {
+          id: true,
+          isAdmin: true,
+        },
+      });
 
     if (!user) {
       throw new NotFoundException(
@@ -267,18 +217,12 @@ export class UsersService {
     }
 
     // ADMIN ko delete nahi karna
-    const isAdmin = user.roles.some(
-      (userRole) =>
-        userRole.role.name === 'ADMIN',
-    );
-
-    if (isAdmin) {
+    if (user.isAdmin) {
       throw new ForbiddenException(
         'ADMIN user cannot be deleted',
       );
     }
 
-    // Delete user
     await this.prisma.user.delete({
       where: {
         id,
@@ -291,11 +235,12 @@ export class UsersService {
   }
 
   // =========================
-  // ASSIGN ROLE
+  // ASSIGN ROLE TO PROJECT MEMBER
   // =========================
 
   async assignRole(
     userId: number,
+    projectId: number,
     roleId: number,
   ) {
     // Check user
@@ -309,6 +254,27 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(
         'User not found',
+      );
+    }
+
+    if (user.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'User is inactive',
+      );
+    }
+
+    // Check project
+    const project =
+      await this.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          deletedAt: null,
+        },
+      });
+
+    if (!project) {
+      throw new NotFoundException(
+        'Project not found',
       );
     }
 
@@ -326,112 +292,77 @@ export class UsersService {
       );
     }
 
-    // ADMIN role API se assign nahi hogi
+    // ADMIN is global, not project role
     if (role.name === 'ADMIN') {
       throw new ForbiddenException(
-        'ADMIN role cannot be assigned through API',
+        'ADMIN cannot be assigned as a project role',
       );
     }
 
-    // Existing roles remove
-    await this.prisma.userRole.deleteMany({
-      where: {
-        userId,
-      },
-    });
-
-    // New role assign
-    await this.prisma.userRole.create({
-      data: {
-        userId,
-        roleId,
-      },
-    });
-
-    return {
-      message: 'Role assigned successfully',
-      userId,
-      role: role.name,
-    };
-  }
-
-  // =========================
-  // ASSIGN PERMISSIONS
-  // =========================
-
-  async assignPermissions(
-    userId: number,
-    permissionIds: number[],
-  ) {
-    // Check user
-    const user =
-      await this.prisma.user.findUnique({
+    // Check existing project membership
+    const existingMember =
+      await this.prisma.projectMember.findUnique({
         where: {
-          id: userId,
-        },
-      });
-
-    if (!user) {
-      throw new NotFoundException(
-        'User not found',
-      );
-    }
-
-    // Check permissions
-    const permissions =
-      await this.prisma.permission.findMany({
-        where: {
-          id: {
-            in: permissionIds,
+          projectId_userId: {
+            projectId,
+            userId,
           },
         },
       });
 
-    if (
-      permissions.length !==
-      permissionIds.length
-    ) {
+    if (!existingMember) {
       throw new NotFoundException(
-        'One or more permissions not found',
+        'User is not a member of this project',
       );
     }
 
-    // Remove existing permissions
-    await this.prisma.userPermission.deleteMany({
-      where: {
-        userId,
-      },
-    });
-
-    // Assign new permissions
-    if (permissionIds.length > 0) {
-      await this.prisma.userPermission.createMany({
-        data: permissionIds.map(
-          (permissionId) => ({
+    // Update project-specific role
+    const updatedMember =
+      await this.prisma.projectMember.update({
+        where: {
+          projectId_userId: {
+            projectId,
             userId,
-            permissionId,
-          }),
-        ),
+          },
+        },
+
+        data: {
+          roleId,
+        },
+
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+
+          role: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
       });
-    }
 
     return {
-      message:
-        'Permissions assigned successfully',
-
-      userId,
-
-      permissions: permissions.map(
-        (permission) => ({
-          id: permission.id,
-          name: permission.name,
-        }),
-      ),
+      message: 'Project role assigned successfully',
+      member: updatedMember,
     };
   }
 
   // =========================
-  // CHANGE STATUS
+  // CHANGE USER STATUS
   // =========================
 
   async updateStatus(
@@ -444,12 +375,9 @@ export class UsersService {
           id: userId,
         },
 
-        include: {
-          roles: {
-            include: {
-              role: true,
-            },
-          },
+        select: {
+          id: true,
+          isAdmin: true,
         },
       });
 
@@ -459,20 +387,13 @@ export class UsersService {
       );
     }
 
-    // Check ADMIN
-    const isAdmin = user.roles.some(
-      (userRole) =>
-        userRole.role.name === 'ADMIN',
-    );
-
     // ADMIN cannot be deactivated
-    if (isAdmin && status === 'INACTIVE') {
+    if (user.isAdmin && status === 'INACTIVE') {
       throw new ForbiddenException(
         'ADMIN cannot be deactivated',
       );
     }
 
-    // Update status
     const updatedUser =
       await this.prisma.user.update({
         where: {
@@ -488,6 +409,7 @@ export class UsersService {
           name: true,
           email: true,
           status: true,
+          isAdmin: true,
         },
       });
 
@@ -498,92 +420,5 @@ export class UsersService {
       user: updatedUser,
     };
   }
-
- 
-async assignRoles(userId: number, dto: AssignRolesDto) {
-  // Check user
-  const user = await this.prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    throw new NotFoundException('User not found');
-  }
-
-  // Remove duplicate role IDs from request
-  const uniqueRoleIds = [...new Set(dto.roleIds)];
-
-  // Check that all roles exist
-  const roles = await this.prisma.role.findMany({
-    where: {
-      id: {
-        in: uniqueRoleIds,
-      },
-    },
-  });
-
-  if (roles.length !== uniqueRoleIds.length) {
-    const foundRoleIds = roles.map((role) => role.id);
-
-    const missingRoleIds = uniqueRoleIds.filter(
-      (roleId) => !foundRoleIds.includes(roleId),
-    );
-
-    throw new NotFoundException(
-      `Role(s) not found: ${missingRoleIds.join(', ')}`,
-    );
-  }
-
-  // Get user's existing roles
-  const existingRoles = await this.prisma.userRole.findMany({
-    where: {
-      userId,
-      roleId: {
-        in: uniqueRoleIds,
-      },
-    },
-  });
-
-  const existingRoleIds = existingRoles.map(
-    (userRole) => userRole.roleId,
-  );
-
-  // Only add roles that user doesn't already have
-  const newRoleIds = uniqueRoleIds.filter(
-    (roleId) => !existingRoleIds.includes(roleId),
-  );
-
-  if (newRoleIds.length === 0) {
-    throw new ConflictException(
-      'User already has all selected roles',
-    );
-  }
-
-  // Add new roles without removing existing roles
-  await this.prisma.userRole.createMany({
-    data: newRoleIds.map((roleId) => ({
-      userId,
-      roleId,
-    })),
-  });
-
-  // Return updated user with all roles
-  return this.prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      department: true,
-      status: true,
-      roles: {
-        include: {
-          role: true,
-        },
-      },
-    },
-  });
 }
 
-
-}

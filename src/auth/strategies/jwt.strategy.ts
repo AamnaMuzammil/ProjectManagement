@@ -31,12 +31,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       where: {
         id: payload.sub,
       },
-      include: {
-        roles: {
-          include: {
-            role: true,
-          },
-        },
+      select: {
+        id: true,
+        email: true,
+        status: true,
+        isAdmin: true,
       },
     });
 
@@ -51,7 +50,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       userId: user.id,
       email: user.email,
-      roles: user.roles.map((item) => item.role.name),
+      isAdmin: user.isAdmin,
     };
   }
 }

@@ -7,4 +7,8 @@ export class AddProjectMemberDto {
   @IsInt()
   @IsNotEmpty()
   userId: number;
+
+  @IsInt()
+  @IsNotEmpty()
+  roleId: number;
 }

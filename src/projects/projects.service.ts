@@ -25,14 +25,45 @@ export class ProjectsService {
     dto: CreateProjectDto,
     userId: number,
   ) {
-    return this.prisma.project.create({
-      data: {
-        name: dto.name,
-        description: dto.description,
-        status: dto.status,
-        createdBy: userId,
+    // Project creator will automatically become
+    // PROJECT_MANAGER of this project.
+
+    const projectManagerRole =
+      await this.prisma.role.findUnique({
+        where: {
+          name: 'PROJECT_MANAGER',
+        },
+      });
+
+    if (!projectManagerRole) {
+      throw new NotFoundException(
+        'PROJECT_MANAGER role not found',
+      );
+    }
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const project =
+          await tx.project.create({
+            data: {
+              name: dto.name,
+              description: dto.description,
+              status: dto.status,
+              createdBy: userId,
+            },
+          });
+
+        await tx.projectMember.create({
+          data: {
+            projectId: project.id,
+            userId,
+            roleId: projectManagerRole.id,
+          },
+        });
+
+        return project;
       },
-    });
+    );
   }
 
   // =========================================================
@@ -54,8 +85,7 @@ export class ProjectsService {
           },
         },
 
-        // Multiple project managers
-        managers: {
+        members: {
           include: {
             user: {
               select: {
@@ -65,16 +95,11 @@ export class ProjectsService {
                 department: true,
               },
             },
-          },
-        },
 
-        members: {
-          include: {
-            user: {
+            role: {
               select: {
                 id: true,
                 name: true,
-                email: true,
               },
             },
           },
@@ -108,8 +133,7 @@ export class ProjectsService {
             },
           },
 
-          // Multiple project managers
-          managers: {
+          members: {
             include: {
               user: {
                 select: {
@@ -119,17 +143,11 @@ export class ProjectsService {
                   department: true,
                 },
               },
-            },
-          },
 
-          members: {
-            include: {
-              user: {
+              role: {
                 select: {
                   id: true,
                   name: true,
-                  email: true,
-                  department: true,
                 },
               },
             },
@@ -261,8 +279,7 @@ export class ProjectsService {
           },
         },
 
-        // Multiple project managers
-        managers: {
+        members: {
           include: {
             user: {
               select: {
@@ -272,16 +289,11 @@ export class ProjectsService {
                 department: true,
               },
             },
-          },
-        },
 
-        members: {
-          include: {
-            user: {
+            role: {
               select: {
                 id: true,
                 name: true,
-                email: true,
               },
             },
           },
@@ -326,6 +338,20 @@ export class ProjectsService {
       );
     }
 
+    // Find PROJECT_MANAGER role
+    const projectManagerRole =
+      await this.prisma.role.findUnique({
+        where: {
+          name: 'PROJECT_MANAGER',
+        },
+      });
+
+    if (!projectManagerRole) {
+      throw new NotFoundException(
+        'PROJECT_MANAGER role not found',
+      );
+    }
+
     // Find users
     const users =
       await this.prisma.user.findMany({
@@ -337,12 +363,8 @@ export class ProjectsService {
           status: 'ACTIVE',
         },
 
-        include: {
-          roles: {
-            include: {
-              role: true,
-            },
-          },
+        select: {
+          id: true,
         },
       });
 
@@ -364,28 +386,9 @@ export class ProjectsService {
       );
     }
 
-    // Check PROJECT_MANAGER role
-    const invalidManagers =
-      users.filter(
-        (user) =>
-          !user.roles.some(
-            (userRole) =>
-              userRole.role.name ===
-              'PROJECT_MANAGER',
-          ),
-      );
-
-    if (invalidManagers.length > 0) {
-      throw new ForbiddenException(
-        `These users do not have PROJECT_MANAGER role: ${invalidManagers
-          .map((user) => user.id)
-          .join(', ')}`,
-      );
-    }
-
-    // Check already existing managers
-    const existingManagers =
-      await this.prisma.projectManager.findMany({
+    // Check already existing project members
+    const existingMembers =
+      await this.prisma.projectMember.findMany({
         where: {
           projectId,
 
@@ -393,17 +396,27 @@ export class ProjectsService {
             in: dto.userIds,
           },
         },
+
+        include: {
+          role: true,
+        },
       });
 
-    const existingIds =
-      existingManagers.map(
-        (manager) => manager.userId,
-      );
+    const existingManagerIds =
+      existingMembers
+        .filter(
+          (member) =>
+            member.role.name ===
+            'PROJECT_MANAGER',
+        )
+        .map(
+          (member) => member.userId,
+        );
 
     const newManagerIds =
       dto.userIds.filter(
         (id) =>
-          !existingIds.includes(id),
+          !existingManagerIds.includes(id),
       );
 
     if (newManagerIds.length === 0) {
@@ -412,35 +425,64 @@ export class ProjectsService {
       );
     }
 
-    // Create project managers
-    await this.prisma.projectManager.createMany({
-      data: newManagerIds.map(
-        (managerId) => ({
+    // Users already members of this project
+    // will have their role changed to PROJECT_MANAGER.
+    const existingMemberIds =
+      existingMembers.map(
+        (member) => member.userId,
+      );
+
+    const existingMemberIdsToUpdate =
+      newManagerIds.filter((id) =>
+        existingMemberIds.includes(id),
+      );
+
+    const newMemberIds =
+      newManagerIds.filter(
+        (id) =>
+          !existingMemberIds.includes(id),
+      );
+
+    // Convert existing members to PROJECT_MANAGER
+    if (
+      existingMemberIdsToUpdate.length > 0
+    ) {
+      await this.prisma.projectMember.updateMany({
+        where: {
           projectId,
-          userId: managerId,
-        }),
-      ),
-    });
 
-    // Project managers are also project members
-    await this.prisma.projectMember.createMany({
-      data: newManagerIds
-        .filter(
-          (managerId) =>
-            managerId !== project.createdBy,
-        )
-        .map((managerId) => ({
-          projectId,
-          userId: managerId,
-        })),
+          userId: {
+            in: existingMemberIdsToUpdate,
+          },
+        },
 
-      skipDuplicates: true,
-    });
+        data: {
+          roleId: projectManagerRole.id,
+        },
+      });
+    }
 
-    // Return all managers
-    return this.prisma.projectManager.findMany({
+    // Add completely new project managers
+    if (newMemberIds.length > 0) {
+      await this.prisma.projectMember.createMany({
+        data: newMemberIds.map(
+          (managerId) => ({
+            projectId,
+            userId: managerId,
+            roleId: projectManagerRole.id,
+          }),
+        ),
+      });
+    }
+
+    // Return all project managers
+    return this.prisma.projectMember.findMany({
       where: {
         projectId,
+
+        role: {
+          name: 'PROJECT_MANAGER',
+        },
       },
 
       include: {
@@ -450,6 +492,13 @@ export class ProjectsService {
             name: true,
             email: true,
             department: true,
+          },
+        },
+
+        role: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -498,9 +547,36 @@ export class ProjectsService {
       );
     }
 
+    if (user.status !== 'ACTIVE') {
+      throw new ForbiddenException(
+        'User is inactive',
+      );
+    }
+
     if (user.id === project.createdBy) {
       throw new ConflictException(
         'Project manager is already the project owner',
+      );
+    }
+
+    // Validate role
+    const role =
+      await this.prisma.role.findUnique({
+        where: {
+          id: dto.roleId,
+        },
+      });
+
+    if (!role) {
+      throw new NotFoundException(
+        'Role not found',
+      );
+    }
+
+    // Prevent using ADMIN role as project role
+    if (role.name === 'ADMIN') {
+      throw new ForbiddenException(
+        'ADMIN role cannot be assigned as a project role',
       );
     }
 
@@ -524,6 +600,7 @@ export class ProjectsService {
       data: {
         projectId,
         userId: dto.userId,
+        roleId: dto.roleId,
       },
 
       include: {
@@ -533,6 +610,13 @@ export class ProjectsService {
             name: true,
             email: true,
             department: true,
+          },
+        },
+
+        role: {
+          select: {
+            id: true,
+            name: true,
           },
         },
       },
@@ -576,11 +660,22 @@ export class ProjectsService {
             userId: memberId,
           },
         },
+
+        include: {
+          role: true,
+        },
       });
 
     if (!member) {
       throw new NotFoundException(
         'User is not a member of this project',
+      );
+    }
+
+    // Project creator should not be removed
+    if (member.userId === project.createdBy) {
+      throw new ForbiddenException(
+        'Project owner cannot be removed from the project',
       );
     }
 

@@ -54,11 +54,8 @@ export const ModelName = {
   User: 'User',
   Role: 'Role',
   Permission: 'Permission',
-  UserRole: 'UserRole',
   RolePermission: 'RolePermission',
-  UserPermission: 'UserPermission',
   Project: 'Project',
-  ProjectManager: 'ProjectManager',
   ProjectMember: 'ProjectMember',
   Task: 'Task',
   Comment: 'Comment'
@@ -87,6 +84,7 @@ export const UserScalarFieldEnum = {
   password: 'password',
   department: 'department',
   status: 'status',
+  isAdmin: 'isAdmin',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -114,28 +112,12 @@ export const PermissionScalarFieldEnum = {
 export type PermissionScalarFieldEnum = (typeof PermissionScalarFieldEnum)[keyof typeof PermissionScalarFieldEnum]
 
 
-export const UserRoleScalarFieldEnum = {
-  userId: 'userId',
-  roleId: 'roleId'
-} as const
-
-export type UserRoleScalarFieldEnum = (typeof UserRoleScalarFieldEnum)[keyof typeof UserRoleScalarFieldEnum]
-
-
 export const RolePermissionScalarFieldEnum = {
   roleId: 'roleId',
   permissionId: 'permissionId'
 } as const
 
 export type RolePermissionScalarFieldEnum = (typeof RolePermissionScalarFieldEnum)[keyof typeof RolePermissionScalarFieldEnum]
-
-
-export const UserPermissionScalarFieldEnum = {
-  userId: 'userId',
-  permissionId: 'permissionId'
-} as const
-
-export type UserPermissionScalarFieldEnum = (typeof UserPermissionScalarFieldEnum)[keyof typeof UserPermissionScalarFieldEnum]
 
 
 export const ProjectScalarFieldEnum = {
@@ -152,18 +134,10 @@ export const ProjectScalarFieldEnum = {
 export type ProjectScalarFieldEnum = (typeof ProjectScalarFieldEnum)[keyof typeof ProjectScalarFieldEnum]
 
 
-export const ProjectManagerScalarFieldEnum = {
-  projectId: 'projectId',
-  userId: 'userId',
-  assignedAt: 'assignedAt'
-} as const
-
-export type ProjectManagerScalarFieldEnum = (typeof ProjectManagerScalarFieldEnum)[keyof typeof ProjectManagerScalarFieldEnum]
-
-
 export const ProjectMemberScalarFieldEnum = {
   projectId: 'projectId',
   userId: 'userId',
+  roleId: 'roleId',
   joinedAt: 'joinedAt'
 } as const
 

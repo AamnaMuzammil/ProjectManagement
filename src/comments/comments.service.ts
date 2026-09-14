@@ -48,20 +48,12 @@ export class CommentsService {
             userId,
           },
         },
-      });
-
-    // Check project manager also
-    const manager =
-      await this.prisma.projectManager.findUnique({
-        where: {
-          projectId_userId: {
-            projectId,
-            userId,
-          },
+        include: {
+          role: true,
         },
       });
 
-    if (!member && !manager) {
+    if (!member) {
       throw new ForbiddenException(
         'You are not a member of this project',
       );
@@ -363,11 +355,12 @@ export class CommentsService {
 
     // Check if user is project manager
     const manager =
-      await this.prisma.projectManager.findUnique({
+      await this.prisma.projectMember.findFirst({
         where: {
-          projectId_userId: {
-            projectId: comment.task.projectId,
-            userId,
+          projectId: comment.task.projectId,
+          userId,
+          role: {
+            name: 'PROJECT_MANAGER',
           },
         },
       });

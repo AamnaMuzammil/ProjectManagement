@@ -13,6 +13,7 @@ import { CreateSubtaskDto } from './dto/create-subtask.dto';
 import { TaskCategory, TaskStatus } from '../generated/prisma/client';
 
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { TaskQueryDto, TaskSortBy, SortOrder } from './dto/task-query.dto';
 
 @Injectable()
 export class TasksService {
@@ -198,11 +199,46 @@ export class TasksService {
   // GET ALL TASKS
   // =========================================================
 
-  async findAll() {
-    return this.prisma.task.findMany({
-      where: {
-        deletedAt: null,
-      },
+
+async findAll(query: TaskQueryDto) {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 10;
+  const skip = (page - 1) * limit;
+
+  const where: any = {
+    deletedAt: null,
+  };
+
+  // Status filter
+  if (query.status) {
+    const statuses = query.status
+      .split(',')
+      .map((status) => status.trim())
+      .filter((status) =>
+        Object.values(TaskStatus).includes(status as TaskStatus),
+      );
+
+    if (statuses.length > 0) {
+      where.status = {
+        in: statuses,
+      };
+    }
+  }
+
+  // Priority filter
+  if (query.priority) {
+    where.priority = query.priority;
+  }
+
+  const sortBy = query.sortBy ?? TaskSortBy.CREATED_AT;
+  const sortOrder = query.sortOrder ?? SortOrder.DESC;
+
+  const [tasks, total] = await Promise.all([
+    this.prisma.task.findMany({
+      where,
+
+      skip,
+      take: limit,
 
       include: {
         project: {
@@ -230,10 +266,27 @@ export class TasksService {
       },
 
       orderBy: {
-        createdAt: 'desc',
+        [sortBy]: sortOrder,
       },
-    });
-  }
+    }),
+
+    this.prisma.task.count({
+      where,
+    }),
+  ]);
+
+  return {
+    data: tasks,
+
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
+}
+
 
   // =========================================================
   // GET ONE TASK

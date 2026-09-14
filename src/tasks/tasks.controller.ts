@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -7,9 +8,9 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
-
 import { TasksService } from './tasks.service';
 
 import { CreateTaskDto } from './dto/create-task.dto';
@@ -23,6 +24,10 @@ import { Permissions } from '../common/decorators/permissions.decorator';
 import { GetUser } from '../common/decorators/get-user.decorator';
 
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
+import { TaskQueryDto } from './dto/task-query.dto';
+
+
+
 
 @Controller('tasks')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -45,8 +50,8 @@ export class TasksController {
 
   @Get()
   @Permissions('VIEW_TASK')
-  findAll() {
-    return this.tasksService.findAll();
+  findAll(@Query() query: TaskQueryDto) {
+    return this.tasksService.findAll(query);
   }
 
   // =========================================================
@@ -107,8 +112,6 @@ export class TasksController {
   ) {
     return this.tasksService.remove(id, userId);
   }
-
-
 
   // =========================================================
   // CREATE SUBTASK

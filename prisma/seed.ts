@@ -1,6 +1,7 @@
 import 'dotenv/config';
 
 import { PrismaClient } from '../src/generated/prisma/client';
+
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import * as argon2 from 'argon2';
@@ -12,6 +13,7 @@ if (!connectionString) {
 }
 
 const adminEmail = process.env.ADMIN_EMAIL;
+
 const adminPassword = process.env.ADMIN_PASSWORD;
 
 if (!adminEmail || !adminPassword) {
@@ -51,29 +53,23 @@ async function main() {
     'CREATE_USER',
     'UPDATE_USER',
     'DELETE_USER',
-
     'ACTIVATE_USER',
     'DEACTIVATE_USER',
-
     'ASSIGN_ROLE',
     'ASSIGN_PERMISSION',
-
     'VIEW_EMPLOYEE',
     'CREATE_EMPLOYEE',
     'UPDATE_EMPLOYEE',
     'DELETE_EMPLOYEE',
-
     'VIEW_PROJECT',
     'CREATE_PROJECT',
     'UPDATE_PROJECT',
     'DELETE_PROJECT',
-
     'VIEW_TASK',
     'CREATE_TASK',
     'UPDATE_TASK',
     'DELETE_TASK',
     'ASSIGN_TASK',
-
     'VIEW_PROJECT_MEMBER',
     'ADD_PROJECT_MEMBER',
     'REMOVE_PROJECT_MEMBER',
@@ -134,9 +130,7 @@ async function main() {
           permissionId: permission.id,
         },
       },
-
       update: {},
-
       create: {
         roleId: adminRole.id,
         permissionId: permission.id,
@@ -164,17 +158,14 @@ async function main() {
     'CREATE_PROJECT',
     'UPDATE_PROJECT',
     'DELETE_PROJECT',
-
     'VIEW_PROJECT_MEMBER',
     'ADD_PROJECT_MEMBER',
     'REMOVE_PROJECT_MEMBER',
-
     'VIEW_TASK',
     'CREATE_TASK',
     'UPDATE_TASK',
     'DELETE_TASK',
     'ASSIGN_TASK',
-
     'CREATE_SUBTASK',
     'UPDATE_SUBTASK',
     'DELETE_SUBTASK',
@@ -198,9 +189,7 @@ async function main() {
           permissionId: permission.id,
         },
       },
-
       update: {},
-
       create: {
         roleId: projectManagerRole.id,
         permissionId: permission.id,
@@ -208,7 +197,51 @@ async function main() {
     });
   }
 
-  console.log('PROJECT_MANAGER project/task permissions assigned successfully');
+  console.log(
+    'PROJECT_MANAGER project/task permissions assigned successfully',
+  );
+
+  // =========================
+  // TASK ROOT CATEGORIES
+  // =========================
+  //
+  // These replace the old TaskCategory enum.
+  //
+  // GENERIC and SPECIFIC are database records.
+  // Their parentCategoryId is null because
+  // they are top-level categories.
+  //
+  // =========================
+
+  await prisma.taskCategoryItem.upsert({
+    where: {
+      id: 1,
+    },
+    update: {
+      name: 'GENERIC',
+      parentCategoryId: null,
+    },
+    create: {
+      name: 'GENERIC',
+      parentCategoryId: null,
+    },
+  });
+
+  await prisma.taskCategoryItem.upsert({
+    where: {
+      id: 2,
+    },
+    update: {
+      name: 'SPECIFIC',
+      parentCategoryId: null,
+    },
+    create: {
+      name: 'SPECIFIC',
+      parentCategoryId: null,
+    },
+  });
+
+  console.log('Task root categories seeded successfully');
 
   // =========================
   // CREATE / FIND ADMIN USER
@@ -220,13 +253,11 @@ async function main() {
     where: {
       email: adminEmail,
     },
-
     update: {
       password: hashedPassword,
       status: 'ACTIVE',
       isAdmin: true,
     },
-
     create: {
       name: 'System Admin',
       email: adminEmail,
@@ -237,10 +268,8 @@ async function main() {
   });
 
   // =========================
-  // ASSIGN ADMIN ROLE
+  // ADMIN USER
   // =========================
-
-
 
   console.log('Roles seeded successfully');
 
@@ -249,11 +278,14 @@ async function main() {
   console.log('ADMIN permissions assigned successfully');
 
   console.log(`ADMIN user ready: ${adminEmail}`);
+
+  console.log(`Admin user ID: ${adminUser.id}`);
 }
 
 main()
   .catch((error) => {
     console.error(error);
+
     process.exit(1);
   })
   .finally(async () => {

@@ -10,14 +10,49 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 import { CreateSubtaskDto } from './dto/create-subtask.dto';
-import { TaskCategory, TaskStatus } from '../generated/prisma/client';
-
+import { TaskStatus } from '../generated/prisma/client';
 import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
-import { TaskQueryDto, TaskSortBy, SortOrder } from './dto/task-query.dto';
+import {
+  TaskQueryDto,
+  TaskSortBy,
+  SortOrder,
+} from './dto/task-query.dto';
 
 @Injectable()
 export class TasksService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // =========================================================
+  // AUDIT LOG HELPER
+  // =========================================================
+
+  private async createAuditLogs(
+    taskId: number,
+    userId: number,
+    changes: {
+      field: string;
+      oldValue: string | null;
+      newValue: string | null;
+    }[],
+  ): Promise<void> {
+    const actualChanges = changes.filter(
+      (change) => change.oldValue !== change.newValue,
+    );
+
+    if (actualChanges.length === 0) {
+      return;
+    }
+
+    await this.prisma.auditLog.createMany({
+      data: actualChanges.map((change) => ({
+        taskId,
+        userId,
+        field: change.field,
+        oldValue: change.oldValue,
+        newValue: change.newValue,
+      })),
+    });
+  }
 
   // =========================================================
   // CHECK PROJECT OWNER / PROJECT MANAGER
@@ -138,6 +173,91 @@ export class TasksService {
   }
 
   // =========================================================
+  // CHECK TASK CATEGORY
+  // =========================================================
+
+  private async checkTaskCategory(categoryId?: number) {
+    if (categoryId === undefined) {
+      return null;
+    }
+
+    const category = await this.prisma.taskCategoryItem.findUnique({
+      where: {
+        id: categoryId,
+      },
+    });
+
+    if (!category) {
+      throw new NotFoundException('Task category not found');
+    }
+
+    return category;
+  }
+
+  // =========================================================
+  // GET ROOT CATEGORY
+  // =========================================================
+
+  /*
+   * Example:
+   *
+   * Authentication
+   *      ↓
+   * NestJS
+   *      ↓
+   * Backend
+   *      ↓
+   * Development
+   *      ↓
+   * GENERIC
+   *
+   * This method returns GENERIC.
+   */
+
+  private async getRootCategoryName(categoryId: number) {
+    let currentCategoryId: number | null = categoryId;
+
+    const visited = new Set<number>();
+
+    while (currentCategoryId !== null) {
+      if (visited.has(currentCategoryId)) {
+        throw new ConflictException(
+          'Invalid task category hierarchy detected',
+        );
+      }
+
+      visited.add(currentCategoryId);
+
+      const category: {
+        id: number;
+        name: string;
+        parentCategoryId: number | null;
+      } | null = await this.prisma.taskCategoryItem.findUnique({
+        where: {
+          id: currentCategoryId,
+        },
+        select: {
+          id: true,
+          name: true,
+          parentCategoryId: true,
+        },
+      });
+
+      if (!category) {
+        throw new NotFoundException('Task category not found');
+      }
+
+      if (category.parentCategoryId === null) {
+        return category.name;
+      }
+
+      currentCategoryId = category.parentCategoryId;
+    }
+
+    return null;
+  }
+
+  // =========================================================
   // CREATE TASK
   // =========================================================
 
@@ -151,6 +271,9 @@ export class TasksService {
     // Assigned user must belong to project
     await this.checkProjectMember(dto.projectId, dto.assignedTo);
 
+    // Validate category if provided
+    await this.checkTaskCategory(dto.categoryId);
+
     return this.prisma.task.create({
       data: {
         title: dto.title,
@@ -163,8 +286,8 @@ export class TasksService {
           priority: dto.priority,
         }),
 
-        ...(dto.category !== undefined && {
-          category: dto.category,
+        ...(dto.categoryId !== undefined && {
+          categoryId: dto.categoryId,
         }),
 
         ...(dto.dueDate !== undefined && {
@@ -191,6 +314,8 @@ export class TasksService {
             department: true,
           },
         },
+
+        category: true,
       },
     });
   }
@@ -199,94 +324,93 @@ export class TasksService {
   // GET ALL TASKS
   // =========================================================
 
+  async findAll(query: TaskQueryDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const skip = (page - 1) * limit;
 
-async findAll(query: TaskQueryDto) {
-  const page = query.page ?? 1;
-  const limit = query.limit ?? 10;
-  const skip = (page - 1) * limit;
+    const where: any = {
+      deletedAt: null,
+    };
 
-  const where: any = {
-    deletedAt: null,
-  };
+    // Status filter
+    if (query.status) {
+      const statuses = query.status
+        .split(',')
+        .map((status) => status.trim())
+        .filter((status) =>
+          Object.values(TaskStatus).includes(status as TaskStatus),
+        );
 
-  // Status filter
-  if (query.status) {
-    const statuses = query.status
-      .split(',')
-      .map((status) => status.trim())
-      .filter((status) =>
-        Object.values(TaskStatus).includes(status as TaskStatus),
-      );
-
-    if (statuses.length > 0) {
-      where.status = {
-        in: statuses,
-      };
+      if (statuses.length > 0) {
+        where.status = {
+          in: statuses,
+        };
+      }
     }
-  }
 
-  // Priority filter
-  if (query.priority) {
-    where.priority = query.priority;
-  }
+    // Priority filter
+    if (query.priority) {
+      where.priority = query.priority;
+    }
 
-  const sortBy = query.sortBy ?? TaskSortBy.CREATED_AT;
-  const sortOrder = query.sortOrder ?? SortOrder.DESC;
+    const sortBy = query.sortBy ?? TaskSortBy.CREATED_AT;
+    const sortOrder = query.sortOrder ?? SortOrder.DESC;
 
-  const [tasks, total] = await Promise.all([
-    this.prisma.task.findMany({
-      where,
+    const [tasks, total] = await Promise.all([
+      this.prisma.task.findMany({
+        where,
+        skip,
+        take: limit,
 
-      skip,
-      take: limit,
-
-      include: {
-        project: {
-          select: {
-            id: true,
-            name: true,
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
+
+          assignee: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              department: true,
+            },
+          },
+
+          parentTask: {
+            select: {
+              id: true,
+              title: true,
+            },
+          },
+
+          category: true,
         },
 
-        assignee: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            department: true,
-          },
+        orderBy: {
+          [sortBy]: sortOrder,
         },
+      }),
 
-        parentTask: {
-          select: {
-            id: true,
-            title: true,
-          },
-        },
+      this.prisma.task.count({
+        where,
+      }),
+    ]);
+
+    return {
+      data: tasks,
+
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-
-      orderBy: {
-        [sortBy]: sortOrder,
-      },
-    }),
-
-    this.prisma.task.count({
-      where,
-    }),
-  ]);
-
-  return {
-    data: tasks,
-
-    meta: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-  };
-}
-
+    };
+  }
 
   // =========================================================
   // GET ONE TASK
@@ -337,8 +461,12 @@ async findAll(query: TaskQueryDto) {
                 email: true,
               },
             },
+
+            category: true,
           },
         },
+
+        category: true,
       },
     });
 
@@ -386,6 +514,8 @@ async findAll(query: TaskQueryDto) {
             deletedAt: null,
           },
         },
+
+        category: true,
       },
 
       orderBy: {
@@ -417,11 +547,13 @@ async findAll(query: TaskQueryDto) {
     // new user must be a project member
     if (dto.assignedTo !== undefined) {
       await this.checkUser(dto.assignedTo);
-
       await this.checkProjectMember(task.projectId, dto.assignedTo);
     }
 
-    return this.prisma.task.update({
+    // Validate category if provided
+    await this.checkTaskCategory(dto.categoryId);
+
+    const updatedTask = await this.prisma.task.update({
       where: {
         id,
       },
@@ -443,8 +575,8 @@ async findAll(query: TaskQueryDto) {
           priority: dto.priority,
         }),
 
-        ...(dto.category !== undefined && {
-          category: dto.category,
+        ...(dto.categoryId !== undefined && {
+          categoryId: dto.categoryId,
         }),
 
         ...(dto.dueDate !== undefined && {
@@ -467,10 +599,92 @@ async findAll(query: TaskQueryDto) {
             email: true,
           },
         },
+
+        category: true,
       },
     });
+
+    // =======================================================
+    // CREATE AUDIT LOGS FOR CHANGED FIELDS
+    // =======================================================
+
+    await this.createAuditLogs(id, userId, [
+      {
+        field: 'title',
+        oldValue: task.title,
+        newValue:
+          dto.title !== undefined ? dto.title : task.title,
+      },
+
+      {
+        field: 'description',
+        oldValue: task.description,
+        newValue:
+          dto.description !== undefined
+            ? dto.description
+            : task.description,
+      },
+
+      {
+        field: 'assignedTo',
+        oldValue: String(task.assignedTo),
+        newValue:
+          dto.assignedTo !== undefined
+            ? String(dto.assignedTo)
+            : String(task.assignedTo),
+      },
+
+      {
+        field: 'priority',
+        oldValue: task.priority,
+        newValue:
+          dto.priority !== undefined
+            ? dto.priority
+            : task.priority,
+      },
+
+      {
+        field: 'categoryId',
+        oldValue:
+          task.categoryId !== null
+            ? String(task.categoryId)
+            : null,
+
+        newValue:
+          dto.categoryId !== undefined
+            ? String(dto.categoryId)
+            : task.categoryId !== null
+              ? String(task.categoryId)
+              : null,
+      },
+
+      {
+        field: 'dueDate',
+        oldValue: task.dueDate
+          ? task.dueDate.toISOString()
+          : null,
+
+        newValue:
+          dto.dueDate !== undefined
+            ? new Date(dto.dueDate).toISOString()
+            : task.dueDate
+              ? task.dueDate.toISOString()
+              : null,
+      },
+    ]);
+
+    return updatedTask;
   }
-  async updateStatus(id: number, dto: UpdateTaskStatusDto, userId: number) {
+
+  // =========================================================
+  // UPDATE TASK STATUS
+  // =========================================================
+
+  async updateStatus(
+    id: number,
+    dto: UpdateTaskStatusDto,
+    userId: number,
+  ) {
     const task = await this.prisma.task.findFirst({
       where: {
         id,
@@ -485,16 +699,40 @@ async findAll(query: TaskQueryDto) {
     // User must belong to the project
     await this.checkProjectMember(task.projectId, userId);
 
-    // SPECIFIC task:
-    // only project manager can mark it COMPLETED
+    // =======================================================
+    // SPECIFIC TASK
+    // =======================================================
+
+    /*
+     * Dynamic category hierarchy:
+     *
+     * UI Bug
+     *   ↓
+     * Bug
+     *   ↓
+     * SPECIFIC
+     *
+     * Root category is SPECIFIC.
+     *
+     * Only project manager / creator can mark COMPLETED.
+     */
+
     if (
-      task.category === TaskCategory.SPECIFIC &&
+      task.categoryId !== null &&
       dto.status === TaskStatus.COMPLETED
     ) {
-      await this.checkProjectManager(task.projectId, userId);
+      const rootCategoryName =
+        await this.getRootCategoryName(task.categoryId);
+
+      if (rootCategoryName === 'SPECIFIC') {
+        await this.checkProjectManager(
+          task.projectId,
+          userId,
+        );
+      }
     }
 
-    return this.prisma.task.update({
+    const updatedTask = await this.prisma.task.update({
       where: {
         id,
       },
@@ -519,8 +757,24 @@ async findAll(query: TaskQueryDto) {
             department: true,
           },
         },
+
+        category: true,
       },
     });
+
+    // =======================================================
+    // CREATE AUDIT LOG FOR STATUS CHANGE
+    // =======================================================
+
+    await this.createAuditLogs(id, userId, [
+      {
+        field: 'status',
+        oldValue: task.status,
+        newValue: dto.status,
+      },
+    ]);
+
+    return updatedTask;
   }
 
   // =========================================================
@@ -584,17 +838,33 @@ async findAll(query: TaskQueryDto) {
     await this.checkUser(dto.assignedTo);
 
     // Assignee must belong to project
-    await this.checkProjectMember(parentTask.projectId, dto.assignedTo);
+    await this.checkProjectMember(
+      parentTask.projectId,
+      dto.assignedTo,
+    );
+
+    // Validate category if provided
+    await this.checkTaskCategory(dto.categoryId);
 
     return this.prisma.task.create({
       data: {
         title: dto.title,
         description: dto.description,
-
         projectId: parentTask.projectId,
         assignedTo: dto.assignedTo,
-
         parentTaskId,
+
+        ...(dto.priority !== undefined && {
+          priority: dto.priority,
+        }),
+
+        ...(dto.categoryId !== undefined && {
+          categoryId: dto.categoryId,
+        }),
+
+        ...(dto.dueDate !== undefined && {
+          dueDate: new Date(dto.dueDate),
+        }),
       },
 
       include: {
@@ -619,6 +889,8 @@ async findAll(query: TaskQueryDto) {
             title: true,
           },
         },
+
+        category: true,
       },
     });
   }
@@ -653,6 +925,8 @@ async findAll(query: TaskQueryDto) {
             email: true,
           },
         },
+
+        category: true,
       },
 
       orderBy: {
@@ -680,7 +954,10 @@ async findAll(query: TaskQueryDto) {
       throw new NotFoundException('Subtask not found');
     }
 
-    await this.checkProjectOwner(subtask.projectId, userId);
+    await this.checkProjectOwner(
+      subtask.projectId,
+      userId,
+    );
 
     await this.prisma.task.update({
       where: {

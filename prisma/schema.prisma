@@ -29,11 +29,6 @@ enum TaskPriority {
   URGENT
 }
 
-enum TaskCategory {
-  GENERIC
-  SPECIFIC
-}
-
 enum TaskStatus {
   PENDING
   STARTED
@@ -45,6 +40,10 @@ enum TaskStatus {
   REJECTED
   COMPLETED
 }
+
+// =========================
+// USER
+// =========================
 
 // =========================
 // USER
@@ -73,6 +72,9 @@ model User {
 
   // Comments created by this user
   comments Comment[]
+
+  // Audit logs created by this user
+  auditLogs AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -194,11 +196,14 @@ model ProjectMember {
 // TASK
 // =========================
 
-model Task {
-  id          Int     @id @default(autoincrement())
-  title       String
-  description String?
+// =========================
+// TASK
+// =========================
 
+model Task {
+  id           Int     @id @default(autoincrement())
+  title        String
+  description  String?
   projectId    Int
   assignedTo   Int
   parentTaskId Int?
@@ -206,7 +211,11 @@ model Task {
   // Task information
   status   TaskStatus   @default(PENDING)
   priority TaskPriority @default(MEDIUM)
-  category TaskCategory @default(GENERIC)
+
+  // Dynamic task category
+  categoryId Int?
+
+  category TaskCategoryItem? @relation(fields: [categoryId], references: [id])
 
   // Assignment / deadline
   assignedAt DateTime  @default(now())
@@ -225,6 +234,9 @@ model Task {
   // Task comments
   comments Comment[]
 
+  // Task audit history
+  auditLogs AuditLog[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -234,9 +246,36 @@ model Task {
   @@index([parentTaskId])
   @@index([status])
   @@index([priority])
-  @@index([category])
+  @@index([categoryId])
   @@index([dueDate])
   @@map("tasks")
+}
+
+// =========================
+// TASK CATEGORY
+// =========================
+
+model TaskCategoryItem {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  // Parent category
+  // null = top-level category
+  parentCategoryId Int?
+
+  parentCategory TaskCategoryItem? @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: Cascade)
+
+  // Unlimited child/subcategories
+  subcategories TaskCategoryItem[] @relation("CategoryHierarchy")
+
+  // Tasks using this category
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([parentCategoryId])
+  @@map("task_categories")
 }
 
 // =========================
@@ -263,4 +302,42 @@ model Comment {
   @@index([userId])
   @@index([taskId])
   @@map("comments")
+}
+
+// =========================
+// AUDIT LOG
+// =========================
+
+model AuditLog {
+  id Int @id @default(autoincrement())
+
+  // Which task was changed
+  taskId Int
+
+  // Which user made the change
+  userId Int
+
+  // What field was changed
+  // Example: status, priority, title, assignedTo, categoryId
+  field String
+
+  // Previous value
+  oldValue String?
+
+  // New value
+  newValue String?
+
+  // When the change happened
+  createdAt DateTime @default(now())
+
+  // User who made the change
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Task that was changed
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

@@ -75,7 +75,17 @@ export type ProjectMember = Prisma.ProjectMemberModel
  */
 export type Task = Prisma.TaskModel
 /**
+ * Model TaskCategoryItem
+ * 
+ */
+export type TaskCategoryItem = Prisma.TaskCategoryItemModel
+/**
  * Model Comment
  * 
  */
 export type Comment = Prisma.CommentModel
+/**
+ * Model AuditLog
+ * 
+ */
+export type AuditLog = Prisma.AuditLogModel

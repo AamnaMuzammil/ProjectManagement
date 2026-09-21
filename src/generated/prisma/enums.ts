@@ -36,14 +36,6 @@ export const TaskPriority = {
 export type TaskPriority = (typeof TaskPriority)[keyof typeof TaskPriority]
 
 
-export const TaskCategory = {
-  GENERIC: 'GENERIC',
-  SPECIFIC: 'SPECIFIC'
-} as const
-
-export type TaskCategory = (typeof TaskCategory)[keyof typeof TaskCategory]
-
-
 export const TaskStatus = {
   PENDING: 'PENDING',
   STARTED: 'STARTED',
